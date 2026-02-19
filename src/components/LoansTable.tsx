@@ -89,9 +89,9 @@ const LoansTable: React.FC<LoansTableProps> = ({ loans }) => {
       )}
 
       {/* Desktop table */}
-      <div className="hidden md:block overflow-x-auto rounded-xl border border-border/50">
+      <div className="hidden md:block overflow-auto max-h-[70vh] rounded-xl border border-border/50">
         <table className="min-w-full divide-y divide-border/50">
-          <thead>
+          <thead className="sticky top-0 z-10">
             <tr className="bg-gradient-to-r from-primary to-primary/85">
               <th scope="col" className="px-5 py-3.5">
                 <input type="checkbox" className="h-4 w-4 rounded focus:ring-ring" onChange={handleSelectAll}
