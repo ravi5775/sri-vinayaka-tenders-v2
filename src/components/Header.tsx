@@ -69,10 +69,6 @@ const Header: React.FC = () => {
               </div>
               <div className="flex flex-col">
                 <span className="text-sm sm:text-base font-bold tracking-tight leading-tight">{t('Sri Vinayaka Tenders')}</span>
-                <div className="flex items-center gap-1.5">
-                  <span className={`h-1.5 w-1.5 rounded-full ${isOnline ? 'bg-emerald-400 shadow-sm shadow-emerald-400/50' : 'bg-muted-foreground/50'}`} />
-                  <span className="text-[10px] text-primary-foreground/50 font-medium">{isOnline ? 'Online' : 'Offline'}</span>
-                </div>
               </div>
             </Link>
 
