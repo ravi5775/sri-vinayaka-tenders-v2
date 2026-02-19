@@ -3,7 +3,7 @@ import { Investor } from '../types';
 import { useInvestors } from '../contexts/InvestorContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { calculateInvestorMetrics } from '../utils/investorCalculations';
-import { Edit, Trash2, IndianRupee, History, AlertCircle } from 'lucide-react';
+import { Edit, Trash2, IndianRupee, History, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react';
 import ConfirmationModal from './ConfirmationModal';
 import InvestorForm from './InvestorForm';
 import InvestorPaymentModal from './InvestorPaymentModal';
@@ -27,6 +27,7 @@ const InvestorsTable: React.FC = () => {
   const [payingInvestor, setPayingInvestor] = useState<Investor | null>(null);
   const [historyInvestor, setHistoryInvestor] = useState<Investor | null>(null);
   const [deletingInvestorId, setDeletingInvestorId] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const handleDelete = async () => {
     if (deletingInvestorId) {
@@ -46,7 +47,8 @@ const InvestorsTable: React.FC = () => {
 
   return (
     <>
-      <div className="overflow-x-auto">
+      {/* Desktop table */}
+      <div className="hidden md:block overflow-x-auto">
         <table className="min-w-full bg-card divide-y divide-border">
           <thead className="bg-primary text-primary-foreground">
             <tr>
@@ -96,6 +98,88 @@ const InvestorsTable: React.FC = () => {
           </tbody>
         </table>
       </div>
+
+      {/* Mobile card layout */}
+      <div className="md:hidden space-y-3">
+        {investors.map((investor) => {
+          const metrics = calculateInvestorMetrics(investor);
+          const profitLossColor = (metrics.totalPaid - investor.investmentAmount) >= 0 ? 'text-green-600' : 'text-destructive';
+          const nextPayoutDate = investor.status !== 'Closed' ? calculateNextPayoutDate(investor).toLocaleDateString() : 'N/A';
+          const isExpanded = expandedId === investor.id;
+
+          return (
+            <div key={investor.id} className="bg-card border border-border rounded-xl overflow-hidden">
+              {/* Card header - always visible */}
+              <button
+                onClick={() => setExpandedId(isExpanded ? null : investor.id)}
+                className="w-full p-4 flex items-center justify-between text-left"
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm font-semibold text-foreground truncate">{sanitize(investor.name)}</span>
+                    <span className={`px-2 py-0.5 text-[10px] leading-4 font-semibold rounded-full ${getStatusChip(metrics.status)}`}>{t(metrics.status)}</span>
+                  </div>
+                  <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+                    <span>₹{investor.investmentAmount.toLocaleString('en-IN')}</span>
+                    <span>•</span>
+                    <span>{t(investor.investmentType)}</span>
+                  </div>
+                </div>
+                {isExpanded ? <ChevronUp size={16} className="text-muted-foreground flex-shrink-0" /> : <ChevronDown size={16} className="text-muted-foreground flex-shrink-0" />}
+              </button>
+
+              {/* Expanded details */}
+              {isExpanded && (
+                <div className="border-t border-border animate-fade-in-fast">
+                  <div className="grid grid-cols-2 gap-px bg-border">
+                    <div className="bg-card p-3">
+                      <span className="text-[10px] uppercase tracking-wider text-muted-foreground">{t('Interest')}</span>
+                      <p className="text-sm font-mono font-medium mt-0.5">
+                        {investor.investmentType === 'InterestRatePlan' ? `₹${metrics.monthlyProfit.toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '-'}
+                      </p>
+                    </div>
+                    <div className="bg-card p-3">
+                      <span className="text-[10px] uppercase tracking-wider text-muted-foreground">{t('Accumulated Profit')}</span>
+                      <p className={`text-sm font-semibold mt-0.5 ${profitLossColor}`}>₹{metrics.accumulatedProfit.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</p>
+                    </div>
+                    <div className="bg-card p-3">
+                      <span className="text-[10px] uppercase tracking-wider text-muted-foreground">{t('Total Paid')}</span>
+                      <p className="text-sm font-medium mt-0.5">₹{metrics.totalPaid.toLocaleString('en-IN')}</p>
+                    </div>
+                    <div className="bg-card p-3">
+                      <span className="text-[10px] uppercase tracking-wider text-muted-foreground">{t('Missed Months')}</span>
+                      <p className="text-sm font-medium mt-0.5">
+                        {metrics.missedMonths > 0 ? <span className="text-destructive flex items-center gap-1"><AlertCircle size={12}/>{metrics.missedMonths}</span> : '0'}
+                      </p>
+                    </div>
+                    <div className="bg-card p-3 col-span-2">
+                      <span className="text-[10px] uppercase tracking-wider text-muted-foreground">{t('Next Payout Date')}</span>
+                      <p className="text-sm font-medium mt-0.5">{nextPayoutDate}</p>
+                    </div>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex items-center justify-around p-3 border-t border-border bg-muted/30">
+                    <button onClick={() => setPayingInvestor(investor)} className="flex flex-col items-center gap-1 p-1.5 text-blue-600" disabled={investor.status === 'Closed'}>
+                      <IndianRupee size={18} /><span className="text-[10px]">{t('Pay')}</span>
+                    </button>
+                    <button onClick={() => setHistoryInvestor(investor)} className="flex flex-col items-center gap-1 p-1.5 text-purple-600">
+                      <History size={18} /><span className="text-[10px]">{t('History')}</span>
+                    </button>
+                    <button onClick={() => setEditingInvestor(investor)} className="flex flex-col items-center gap-1 p-1.5 text-green-600">
+                      <Edit size={18} /><span className="text-[10px]">{t('Edit')}</span>
+                    </button>
+                    <button onClick={() => setDeletingInvestorId(investor.id)} className="flex flex-col items-center gap-1 p-1.5 text-destructive">
+                      <Trash2 size={18} /><span className="text-[10px]">{t('Delete')}</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
       {investors.length === 0 && <p className="text-center text-muted-foreground py-8">{t('No investors found.')}</p>}
 
       {editingInvestor && <InvestorForm isOpen={!!editingInvestor} onClose={() => setEditingInvestor(null)} investorToEdit={editingInvestor} />}

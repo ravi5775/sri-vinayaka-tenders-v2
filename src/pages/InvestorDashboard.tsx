@@ -26,20 +26,20 @@ const InvestorDashboard: React.FC = () => {
   const overallProfitLossColor = summary.overallProfitLoss >= 0 ? 'text-success' : 'text-destructive';
 
   return (
-    <div className="space-y-6 animate-fade-in-up">
+    <div className="space-y-4 sm:space-y-6 animate-fade-in-up">
       <Link to="/" className="inline-flex items-center text-sm font-semibold text-primary hover:text-primary/80 transition-colors duration-200">
         <ChevronLeft size={16} className="mr-1" />
         {t('Back to Dashboard')}
       </Link>
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <h1 className="text-3xl font-bold text-foreground tracking-tight">{t('Investor Payment Dashboard')}</h1>
-        <button onClick={() => setIsFormOpen(true)} className="btn btn-primary">
-          <Plus size={18} className="mr-2" />
+      <div className="flex flex-col sm:flex-row sm:flex-wrap items-start sm:items-center justify-between gap-3 sm:gap-4">
+        <h1 className="text-xl sm:text-3xl font-bold text-foreground tracking-tight">{t('Investor Payment Dashboard')}</h1>
+        <button onClick={() => setIsFormOpen(true)} className="btn btn-primary text-xs sm:text-sm w-full sm:w-auto">
+          <Plus size={16} className="mr-1.5" />
           {t('Add New Investor')}
         </button>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-4">
         <SummaryCard icon={Users} title={t('Total Investors')} value={summary.totalInvestors} />
         <SummaryCard icon={IndianRupee} title={t('Total Investment Amount')} value={summary.totalInvestment} isCurrency />
         <SummaryCard icon={TrendingUp} title={t('Total Profit Earned')} value={summary.totalProfitEarned} isCurrency />

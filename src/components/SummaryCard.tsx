@@ -17,13 +17,13 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ icon: Icon, title, value, isC
     : value;
 
   return (
-    <div className="glass-card p-5 flex items-start gap-4 hover:shadow-glow transition-all duration-300 group animate-fade-in-up">
-      <div className="bg-gradient-to-br from-primary/15 to-accent/10 p-3 rounded-xl group-hover:scale-110 transition-transform duration-300">
-        <Icon className="w-5 h-5 text-primary" />
+    <div className="glass-card p-3 sm:p-5 flex items-start gap-3 sm:gap-4 hover:shadow-glow transition-all duration-300 group animate-fade-in-up">
+      <div className="bg-gradient-to-br from-primary/15 to-accent/10 p-2 sm:p-3 rounded-lg sm:rounded-xl group-hover:scale-110 transition-transform duration-300">
+        <Icon className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
       </div>
       <div className="min-w-0">
-        <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{title}</h3>
-        <p className={`text-xl font-bold mt-1 tracking-tight ${color}`}>{formattedValue}</p>
+        <h3 className="text-[10px] sm:text-xs font-medium text-muted-foreground uppercase tracking-wider leading-tight">{title}</h3>
+        <p className={`text-sm sm:text-xl font-bold mt-0.5 sm:mt-1 tracking-tight ${color}`}>{formattedValue}</p>
       </div>
     </div>
   );
