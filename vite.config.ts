@@ -36,6 +36,9 @@ export default defineConfig(({ mode }) => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  optimizeDeps: {
+    include: ['lodash', 'recharts', 'jspdf'],
+  },
   build: {
     chunkSizeWarningLimit: 600,
     rollupOptions: {
