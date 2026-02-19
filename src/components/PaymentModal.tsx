@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { Transaction } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useLoans } from '../contexts/LoanContext';
+import { useLogo } from '../contexts/LogoContext';
 import { X, Printer, Edit, Trash2, Check, AlertTriangle } from 'lucide-react';
 import { calculateTotalAmount, calculateAmountPaid, calculateBalance } from '../utils/planCalculations';
 import { generateTenderReceipt } from '../utils/pdfGenerator';
@@ -16,6 +17,7 @@ interface PaymentModalProps {
 const PaymentModal: React.FC<PaymentModalProps> = ({ loanId, onClose }) => {
   const { t, language } = useLanguage();
   const { loans, getLoanById, updateTransaction, deleteTransaction } = useLoans();
+  const { logo } = useLogo();
   const loan = useMemo(() => getLoanById(loanId), [loanId, loans]);
 
   const [editingTxnId, setEditingTxnId] = useState<string | null>(null);
@@ -29,7 +31,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({ loanId, onClose }) => {
   const amountPaid = calculateAmountPaid(loan.transactions);
   const balance = calculateBalance(loan);
 
-  const handleGeneratePdf = () => generateTenderReceipt(loan, t, language);
+  const handleGeneratePdf = () => generateTenderReceipt(loan, t, language, logo);
 
   const handleEditStart = (txn: Transaction) => {
     setEditingTxnId(txn.id);
