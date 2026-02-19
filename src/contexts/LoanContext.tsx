@@ -3,6 +3,7 @@ import { Loan, Transaction } from '../types';
 import { useAuth } from './AuthContext';
 import { useToastContext } from './ToastContext';
 import apiService from '../utils/apiService';
+import { auditLog } from '../utils/auditLogger';
 
 interface LoanContextType {
   loans: Loan[];
@@ -55,8 +56,9 @@ export const LoanProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const addLoan = async (loanData: Partial<Loan>) => {
     if (!user) return;
     try {
-      await apiService.createLoan(loanData);
+      const newLoan = await apiService.createLoan(loanData);
       await fetchLoans(true);
+      auditLog({ action: 'LOAN_CREATED', entityType: 'loan', entityId: newLoan?.id, details: { customerName: loanData.customerName, loanType: loanData.loanType, loanAmount: loanData.loanAmount } });
       showToast('Loan created successfully!', 'success');
     } catch (error: any) {
       showToast(error.message, 'error');
@@ -68,6 +70,7 @@ export const LoanProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     try {
       await apiService.updateLoan(loanData.id, loanData);
       await fetchLoans(true);
+      auditLog({ action: 'LOAN_UPDATED', entityType: 'loan', entityId: loanData.id, details: { customerName: loanData.customerName } });
       showToast('Loan updated successfully!', 'success');
     } catch (error: any) {
       showToast(error.message, 'error');
@@ -79,6 +82,7 @@ export const LoanProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     try {
       await apiService.deleteLoans(loanIds);
       await fetchLoans(true);
+      auditLog({ action: 'LOAN_DELETED', entityType: 'loan', details: { loanIds, count: loanIds.length } });
       showToast('Loan(s) deleted successfully!', 'success');
     } catch (error: any) {
       showToast(error.message, 'error');
@@ -93,6 +97,7 @@ export const LoanProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     try {
       await apiService.addTransaction(loanId, transaction);
       await fetchLoans(true);
+      auditLog({ action: 'PAYMENT_LOGGED', entityType: 'transaction', entityId: loanId, details: { amount: transaction.amount, type: transaction.payment_type, date: transaction.payment_date } });
     } catch (error: any) {
       showToast(error.message, 'error');
       throw error;
@@ -116,6 +121,7 @@ export const LoanProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     try {
       await apiService.deleteTransaction(loanId, transactionId);
       await fetchLoans(true);
+      auditLog({ action: 'PAYMENT_DELETED', entityType: 'transaction', entityId: transactionId, details: { loanId } });
     } catch (error: any) {
       showToast(error.message, 'error');
       throw error;
