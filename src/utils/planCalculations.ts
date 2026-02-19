@@ -37,18 +37,30 @@ const getInterestRateCalculationDetails = (loan: Loan) => {
     return { balance: 0, nextDueDate: null, status: 'Completed' as const };
   }
 
-  let currentPrincipal = loan.loanAmount;
+  // Separate principal payments from interest payments
+  const principalPayments = transactions.filter(tx => tx.payment_type === 'principal');
+  const interestPayments = transactions.filter(tx => tx.payment_type === 'interest');
+  // Legacy transactions (no payment_type) are treated as interest payments
+  const legacyPayments = transactions.filter(tx => !tx.payment_type);
+
+  // Calculate principal reductions
+  const totalPrincipalPaid = principalPayments.reduce((sum, tx) => sum + tx.amount, 0);
+  let currentPrincipal = loan.loanAmount - totalPrincipalPaid;
+
   const startDate = new Date(loan.startDate);
   const today = new Date();
   let hasOverdueInterest = false;
   let monthIterator = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
   const lastFullMonthStart = new Date(today.getFullYear(), today.getMonth(), 1);
 
+  // Only use interest + legacy payments for monthly interest tracking
+  const interestTxns = [...interestPayments, ...legacyPayments];
+
   while (monthIterator < lastFullMonthStart) {
-    const interestForMonth = currentPrincipal * ((loan.interestRate || 0) / 100);
+    const interestForMonth = Math.max(0, currentPrincipal) * ((loan.interestRate || 0) / 100);
     const startOfMonth = new Date(monthIterator);
     const endOfMonth = new Date(monthIterator.getFullYear(), monthIterator.getMonth() + 1, 0, 23, 59, 59);
-    const paidThisMonth = transactions
+    const paidThisMonth = interestTxns
       .filter(tx => { const txDate = new Date(tx.payment_date); return txDate >= startOfMonth && txDate <= endOfMonth; })
       .reduce((sum, tx) => sum + tx.amount, 0);
     const unpaidInterest = interestForMonth - paidThisMonth;
@@ -57,7 +69,7 @@ const getInterestRateCalculationDetails = (loan: Loan) => {
     monthIterator.setMonth(monthIterator.getMonth() + 1);
   }
 
-  const paidThisCurrentMonth = transactions
+  const paidThisCurrentMonth = interestTxns
     .filter(tx => { const txDate = new Date(tx.payment_date); return txDate >= lastFullMonthStart && txDate <= today; })
     .reduce((sum, tx) => sum + tx.amount, 0);
   currentPrincipal -= paidThisCurrentMonth;

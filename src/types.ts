@@ -15,12 +15,15 @@ export interface Notification {
   created_at: string;
 }
 
+export type TransactionPaymentType = 'interest' | 'principal';
+
 export interface Transaction {
   id: string;
   loan_id: string;
   user_id: string;
   amount: number;
   payment_date: string;
+  payment_type?: TransactionPaymentType;
   created_at?: string;
 }
 

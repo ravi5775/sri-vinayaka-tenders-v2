@@ -143,6 +143,7 @@ const apiService = {
   addTransaction: async (loanId: string, transaction: Omit<Transaction, 'id' | 'loan_id' | 'user_id' | 'created_at'>): Promise<void> => {
     return authFetch(`/loans/${loanId}/transactions`, { method: 'POST', body: JSON.stringify(transaction) });
   },
+
   updateTransaction: async (loanId: string, transactionId: string, transaction: Partial<Transaction>): Promise<void> => {
     return authFetch(`/loans/${loanId}/transactions/${transactionId}`, { method: 'PUT', body: JSON.stringify(transaction) });
   },
