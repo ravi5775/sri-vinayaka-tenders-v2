@@ -38,6 +38,15 @@ CREATE TABLE IF NOT EXISTS public.users (
 
 CREATE INDEX IF NOT EXISTS idx_users_email ON public.users(email);
 
+-- Add new security columns to existing users table (idempotent)
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS role          TEXT        NOT NULL DEFAULT 'admin';
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS active_token_hash TEXT;
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS device_id     TEXT;
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ;
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS is_locked     BOOLEAN     NOT NULL DEFAULT false;
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS locked_until  TIMESTAMPTZ;
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS failed_attempts INT        NOT NULL DEFAULT 0;
+
 -- ============================================================
 -- PROFILES TABLE
 -- ============================================================
@@ -343,7 +352,7 @@ VALUES (
   'Admin',
   'admin'
 )
-ON CONFLICT (email) DO NOTHING;
+ON CONFLICT (email) DO UPDATE SET role = EXCLUDED.role, display_name = EXCLUDED.display_name;
 
 INSERT INTO public.profiles (id, display_name)
 VALUES ('00000000-0000-0000-0000-000000000001', 'Admin')

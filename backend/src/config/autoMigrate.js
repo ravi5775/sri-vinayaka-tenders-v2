@@ -33,6 +33,10 @@ async function autoMigrate() {
       ALTER TABLE users ADD COLUMN IF NOT EXISTS device_id TEXT;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS display_name TEXT;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'admin';
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS is_locked BOOLEAN NOT NULL DEFAULT false;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS locked_until TIMESTAMPTZ;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS failed_attempts INT NOT NULL DEFAULT 0;
 
       CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 
