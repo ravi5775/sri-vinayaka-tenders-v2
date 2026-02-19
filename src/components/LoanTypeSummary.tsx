@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { Loan, LoanType } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
-import { calculateLoanProfit, calculateAmountPaid } from '../utils/planCalculations';
+import { calculateLoanProfit, calculateAmountPaid, calculateInterestAmount } from '../utils/planCalculations';
 import SimpleBarGraph from './SimpleBarGraph';
 
 interface LoanTypeSummaryProps {
@@ -19,9 +19,10 @@ const LoanTypeSummary: React.FC<LoanTypeSummaryProps> = ({ loans, loanType }) =>
         acc.totalPrincipal += loan.loanAmount;
         acc.totalGiven += loan.givenAmount;
         acc.totalCollected += calculateAmountPaid(loan.transactions);
+        acc.totalInterest += calculateInterestAmount(loan);
         return acc;
       },
-      { totalProfit: 0, totalPrincipal: 0, totalGiven: 0, totalCollected: 0 }
+      { totalProfit: 0, totalPrincipal: 0, totalGiven: 0, totalCollected: 0, totalInterest: 0 }
     );
   }, [loans]);
 
@@ -41,6 +42,7 @@ const LoanTypeSummary: React.FC<LoanTypeSummaryProps> = ({ loans, loanType }) =>
           <Metric title={t('Total Profit')} value={summary.totalProfit} />
           <Metric title={t('Total Principal')} value={summary.totalPrincipal} />
           <Metric title={t('Total Given')} value={summary.totalGiven} />
+          <Metric title={t('Total Interest')} value={summary.totalInterest} />
         </div>
         <div>
           <h4 className="font-semibold text-muted-foreground text-sm mb-3">{t('Financials')}</h4>
