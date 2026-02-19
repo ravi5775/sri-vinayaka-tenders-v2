@@ -49,7 +49,7 @@ const buildPdf = (doc: jsPDF, loan: Loan, logoDataUri: string | null) => {
   // ── Logo ───────────────────────────────────────────────────────────────
   if (logoDataUri) {
     try {
-      doc.addImage(logoDataUri, 'PNG', margin, 5, 18, 18);
+      doc.addImage(logoDataUri, 'PNG', margin, 3, 26, 26);
     } catch (_) { /* ignore */ }
   }
 
