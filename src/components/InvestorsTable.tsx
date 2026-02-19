@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Investor } from '../types';
 import { useInvestors } from '../contexts/InvestorContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { calculateInvestorMetrics } from '../utils/investorCalculations';
-import { Edit, Trash2, IndianRupee, History, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react';
+import { Edit, Trash2, IndianRupee, History, AlertCircle, ChevronDown, ChevronUp, Search } from 'lucide-react';
 import ConfirmationModal from './ConfirmationModal';
 import InvestorForm from './InvestorForm';
 import InvestorPaymentModal from './InvestorPaymentModal';
@@ -28,6 +28,13 @@ const InvestorsTable: React.FC = () => {
   const [historyInvestor, setHistoryInvestor] = useState<Investor | null>(null);
   const [deletingInvestorId, setDeletingInvestorId] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+
+  const filteredInvestors = useMemo(() => {
+    if (!searchTerm.trim()) return investors;
+    const lower = searchTerm.toLowerCase().trim();
+    return investors.filter(inv => inv.name.toLowerCase().includes(lower));
+  }, [investors, searchTerm]);
 
   const handleDelete = async () => {
     if (deletingInvestorId) {
@@ -47,6 +54,18 @@ const InvestorsTable: React.FC = () => {
 
   return (
     <>
+      {/* Search bar */}
+      <div className="mb-4 relative">
+        <Search className="absolute top-1/2 -translate-y-1/2 left-3.5 w-4 h-4 text-muted-foreground" />
+        <input
+          type="text"
+          placeholder={t('Search investors by name...')}
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="w-full pl-10 pr-4 py-2.5 border border-input rounded-xl focus:ring-2 focus:ring-primary/30 focus:border-primary bg-background transition-all duration-200 text-sm"
+        />
+      </div>
+
       {/* Desktop table */}
       <div className="hidden md:block overflow-auto max-h-[70vh] rounded-xl border border-border">
         <table className="min-w-full bg-card divide-y divide-border">
@@ -65,7 +84,7 @@ const InvestorsTable: React.FC = () => {
             </tr>
           </thead>
           <tbody className="bg-card divide-y divide-border">
-            {investors.map((investor) => {
+            {filteredInvestors.map((investor) => {
               const metrics = calculateInvestorMetrics(investor);
               const profitLoss = metrics.totalPaid - investor.investmentAmount;
               const profitLossColor = profitLoss >= 0 ? 'text-green-600' : 'text-destructive';
@@ -101,7 +120,7 @@ const InvestorsTable: React.FC = () => {
 
       {/* Mobile card layout */}
       <div className="md:hidden space-y-3">
-        {investors.map((investor) => {
+        {filteredInvestors.map((investor) => {
           const metrics = calculateInvestorMetrics(investor);
           const profitLossColor = (metrics.totalPaid - investor.investmentAmount) >= 0 ? 'text-green-600' : 'text-destructive';
           const nextPayoutDate = investor.status !== 'Closed' ? calculateNextPayoutDate(investor).toLocaleDateString() : 'N/A';
@@ -180,7 +199,7 @@ const InvestorsTable: React.FC = () => {
         })}
       </div>
 
-      {investors.length === 0 && <p className="text-center text-muted-foreground py-8">{t('No investors found.')}</p>}
+      {filteredInvestors.length === 0 && <p className="text-center text-muted-foreground py-8">{searchTerm ? t('No matching investors found.') : t('No investors found.')}</p>}
 
       {editingInvestor && <InvestorForm isOpen={!!editingInvestor} onClose={() => setEditingInvestor(null)} investorToEdit={editingInvestor} />}
       {payingInvestor && <InvestorPaymentModal isOpen={!!payingInvestor} onClose={() => setPayingInvestor(null)} investor={payingInvestor} />}
