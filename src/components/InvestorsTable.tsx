@@ -48,9 +48,9 @@ const InvestorsTable: React.FC = () => {
   return (
     <>
       {/* Desktop table */}
-      <div className="hidden md:block overflow-x-auto">
+      <div className="hidden md:block overflow-auto max-h-[70vh] rounded-xl border border-border">
         <table className="min-w-full bg-card divide-y divide-border">
-          <thead className="bg-primary text-primary-foreground">
+          <thead className="bg-primary text-primary-foreground sticky top-0 z-10">
             <tr>
               <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider">{t('Investor Name')}</th>
               <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider">{t('Investment Type')}</th>
