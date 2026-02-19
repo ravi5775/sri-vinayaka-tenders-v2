@@ -105,11 +105,11 @@ const LoginPage: React.FC = () => {
 
       <div className="w-full max-w-md relative animate-fade-in-up">
         <div className="text-center mb-8">
-          <div className="mx-auto h-20 w-20 mb-5 rounded-2xl bg-gradient-to-br from-primary/10 to-accent/10 p-2 shadow-glow">
+          <div className="mx-auto h-28 w-28 mb-5 rounded-3xl bg-gradient-to-br from-primary/10 to-accent/10 p-2.5 shadow-glow">
             <img src={logo} alt="Logo" className="h-full w-full object-contain" />
           </div>
-          <h1 className="text-3xl font-bold text-foreground tracking-tight">{t('Sri Vinayaka Tenders')}</h1>
-          <p className="text-muted-foreground mt-2 text-sm">{t('Admin Portal')}</p>
+          <h1 className="text-3xl font-bold text-foreground tracking-tight">Sri Vinayaka Tenders</h1>
+          <p className="text-primary font-semibold mt-1 text-sm uppercase tracking-widest">Admin Portal</p>
         </div>
 
         <div className="glass-card p-8">
