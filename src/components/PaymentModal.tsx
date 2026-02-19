@@ -31,7 +31,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({ loanId, onClose }) => {
   const amountPaid = calculateAmountPaid(loan.transactions);
   const balance = calculateBalance(loan);
 
-  const handleGeneratePdf = () => generateTenderReceipt(loan, t, language, logo);
+  const handleGeneratePdf = async () => { await generateTenderReceipt(loan, t, language, logo); };
 
   const handleEditStart = (txn: Transaction) => {
     setEditingTxnId(txn.id);

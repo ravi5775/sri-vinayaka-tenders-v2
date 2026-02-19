@@ -14,95 +14,109 @@ const formatDate = (dateStr: string) =>
     year: 'numeric',
   });
 
-export const generateTenderReceipt = (
-  loan: Loan,
-  t: (key: string) => string,
-  lang: Language,
-  logoBase64?: string
-) => {
-  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+/** Convert any image URL or existing data-URI to a PNG base64 data URI via canvas */
+const loadImageAsBase64 = (src: string): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth || 128;
+      canvas.height = img.naturalHeight || 128;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return reject(new Error('canvas ctx unavailable'));
+      ctx.drawImage(img, 0, 0);
+      resolve(canvas.toDataURL('image/png'));
+    };
+    img.onerror = reject;
+    img.src = src;
+  });
+
+const buildPdf = (doc: jsPDF, loan: Loan, logoDataUri: string | null) => {
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   const margin = 18;
   const contentW = pageW - margin * 2;
 
-  // ── Background header band ──────────────────────────────────────────────
-  doc.setFillColor(15, 52, 96);          // deep navy
-  doc.rect(0, 0, pageW, 52, 'F');
+  // ── Header band ────────────────────────────────────────────────────────
+  doc.setFillColor(15, 52, 96);
+  doc.rect(0, 0, pageW, 56, 'F');
 
-  // ── Logo ────────────────────────────────────────────────────────────────
-  if (logoBase64) {
+  // subtle diagonal accent stripe
+  doc.setFillColor(255, 193, 7);
+  doc.rect(0, 52, pageW, 4, 'F');
+
+  // ── Logo ───────────────────────────────────────────────────────────────
+  if (logoDataUri) {
     try {
-      const imgType = logoBase64.includes('data:image/png') ? 'PNG' : 'JPEG';
-      const base64Data = logoBase64.includes(',') ? logoBase64 : `data:image/png;base64,${logoBase64}`;
-      doc.addImage(base64Data, imgType, margin, 8, 22, 22);
-    } catch (e) {
-      // skip logo if it fails
-    }
+      doc.addImage(logoDataUri, 'PNG', margin, 9, 26, 26);
+    } catch (_) { /* ignore */ }
   }
 
-  // ── Company name & subtitle ─────────────────────────────────────────────
+  // ── Company name & receipt label ───────────────────────────────────────
+  const textX = logoDataUri ? margin + 32 : pageW / 2;
+  const textAlign = logoDataUri ? 'left' : 'center';
+
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(20);
+  doc.setFontSize(18);
   doc.setTextColor(255, 255, 255);
-  doc.text('Sri Vinayaka Tenders', pageW / 2, 20, { align: 'center' });
+  doc.text('Sri Vinayaka Tenders', textX, 21, { align: textAlign });
 
-  doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
   doc.setTextColor(180, 210, 255);
-  doc.text('Official Loan Receipt', pageW / 2, 28, { align: 'center' });
+  doc.text('Official Loan Receipt', textX, 29, { align: textAlign });
 
-  // ── Receipt badge ───────────────────────────────────────────────────────
-  doc.setFillColor(255, 193, 7);
-  doc.roundedRect(pageW / 2 - 22, 33, 44, 9, 2, 2, 'F');
+  // Receipt badge (right side of header)
+  doc.setFillColor(255, 255, 255);
+  doc.roundedRect(pageW - margin - 36, 12, 36, 12, 2, 2, 'F');
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(8);
   doc.setTextColor(15, 52, 96);
-  doc.text('LOAN RECEIPT', pageW / 2, 39, { align: 'center' });
+  doc.text('LOAN RECEIPT', pageW - margin - 18, 20, { align: 'center' });
 
-  // ── Reset text colour ───────────────────────────────────────────────────
-  let y = 62;
-  doc.setTextColor(30, 30, 30);
+  let y = 66;
 
-  // ── Helper to draw a labelled row ───────────────────────────────────────
-  const drawRow = (label: string, value: string, x: number, yPos: number, colW: number) => {
-    doc.setFontSize(7.5);
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(110, 110, 110);
-    doc.text(label.toUpperCase(), x, yPos);
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(20, 20, 20);
-    doc.text(value, x, yPos + 5);
-  };
-
-  // ── Info section ────────────────────────────────────────────────────────
+  // ── Info grid ──────────────────────────────────────────────────────────
   doc.setFillColor(245, 248, 255);
   doc.roundedRect(margin, y - 4, contentW, 36, 3, 3, 'F');
   doc.setDrawColor(200, 215, 240);
   doc.setLineWidth(0.3);
   doc.roundedRect(margin, y - 4, contentW, 36, 3, 3, 'S');
 
-  const col1 = margin + 4;
-  const col2 = margin + contentW / 2 + 4;
+  const drawField = (label: string, value: string, x: number, yy: number) => {
+    doc.setFontSize(7);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(120, 120, 130);
+    doc.text(label.toUpperCase(), x, yy);
+    doc.setFontSize(9.5);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(20, 20, 40);
+    doc.text(value, x, yy + 5.5);
+  };
 
-  drawRow('Loan ID', loan.id.substring(0, 18) + '...', col1, y + 2, contentW / 2);
-  drawRow('Issue Date', formatDate(loan.created_at), col2, y + 2, contentW / 2);
-  drawRow('Customer Name', loan.customerName, col1, y + 16, contentW / 2);
-  drawRow('Phone', loan.phone || '—', col2, y + 16, contentW / 2);
+  const half = contentW / 2;
+  const c1 = margin + 4;
+  const c2 = margin + half + 4;
 
-  y += 44;
+  const shortId = loan.id.length > 20 ? loan.id.substring(0, 20) + '…' : loan.id;
+  drawField('Loan ID', shortId, c1, y + 3);
+  drawField('Issue Date', formatDate(loan.created_at), c2, y + 3);
+  drawField('Customer Name', loan.customerName, c1, y + 17);
+  drawField('Phone', loan.phone || '—', c2, y + 17);
 
-  // ── Summary cards ───────────────────────────────────────────────────────
+  y += 42;
+
+  // ── Summary cards ──────────────────────────────────────────────────────
   const totalAmount = calculateTotalAmount(loan);
-  const amountPaid = calculateAmountPaid(loan.transactions);
-  const balance = calculateBalance(loan);
+  const amountPaid  = calculateAmountPaid(loan.transactions);
+  const balance     = calculateBalance(loan);
 
   const cardW = (contentW - 8) / 3;
-  const cards = [
-    { label: 'Total Amount', value: formatCurrency(totalAmount), color: [15, 52, 96] as [number, number, number], bg: [230, 240, 255] as [number, number, number] },
-    { label: 'Amount Paid', value: formatCurrency(amountPaid), color: [21, 128, 61] as [number, number, number], bg: [220, 252, 231] as [number, number, number] },
-    { label: 'Balance Due', value: formatCurrency(balance), color: [185, 28, 28] as [number, number, number], bg: [254, 226, 226] as [number, number, number] },
+  const cards: { label: string; value: string; bg: [number,number,number]; fg: [number,number,number] }[] = [
+    { label: 'Total Amount', value: formatCurrency(totalAmount), bg: [224, 236, 255], fg: [15, 52, 96] },
+    { label: 'Amount Paid',  value: formatCurrency(amountPaid),  bg: [220, 252, 231], fg: [21, 128, 61] },
+    { label: 'Balance Due',  value: formatCurrency(balance),     bg: [254, 226, 226], fg: [185, 28, 28] },
   ];
 
   cards.forEach((card, i) => {
@@ -111,121 +125,117 @@ export const generateTenderReceipt = (
     doc.roundedRect(cx, y, cardW, 22, 2, 2, 'F');
     doc.setFontSize(7);
     doc.setFont('helvetica', 'normal');
-    doc.setTextColor(100, 100, 100);
+    doc.setTextColor(100, 100, 110);
     doc.text(card.label.toUpperCase(), cx + cardW / 2, y + 7, { align: 'center' });
-    doc.setFontSize(11);
+    doc.setFontSize(10.5);
     doc.setFont('helvetica', 'bold');
-    doc.setTextColor(...card.color);
+    doc.setTextColor(...card.fg);
     doc.text(card.value, cx + cardW / 2, y + 16, { align: 'center' });
   });
 
   y += 30;
 
-  // ── Loan details row ────────────────────────────────────────────────────
-  const loanDetails = [
-    { label: 'Loan Type', value: loan.loanType },
-    { label: 'Start Date', value: formatDate(loan.startDate) },
-    { label: 'Status', value: loan.status },
-  ];
-
-  doc.setFillColor(250, 250, 252);
+  // ── Loan details row ───────────────────────────────────────────────────
+  doc.setFillColor(250, 250, 253);
   doc.roundedRect(margin, y, contentW, 18, 2, 2, 'F');
-  doc.setDrawColor(220, 220, 230);
+  doc.setDrawColor(220, 220, 232);
+  doc.setLineWidth(0.3);
   doc.roundedRect(margin, y, contentW, 18, 2, 2, 'S');
 
-  const detailColW = contentW / loanDetails.length;
-  loanDetails.forEach((d, i) => {
-    const dx = margin + 4 + i * detailColW;
+  const detailItems = [
+    { label: 'Loan Type', value: loan.loanType },
+    { label: 'Start Date', value: formatDate(loan.startDate) },
+    { label: 'Status',     value: loan.status },
+  ];
+  const dColW = contentW / detailItems.length;
+  detailItems.forEach((d, i) => {
+    const dx = margin + 4 + i * dColW;
     doc.setFontSize(7);
     doc.setFont('helvetica', 'normal');
-    doc.setTextColor(130, 130, 130);
+    doc.setTextColor(130, 130, 140);
     doc.text(d.label.toUpperCase(), dx, y + 6);
     doc.setFontSize(9.5);
     doc.setFont('helvetica', 'bold');
-    doc.setTextColor(30, 30, 30);
+    doc.setTextColor(30, 30, 40);
     doc.text(d.value, dx, y + 14);
   });
 
   y += 26;
 
-  // ── Transaction History table ───────────────────────────────────────────
+  // ── Transaction History ────────────────────────────────────────────────
   doc.setFontSize(11);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(15, 52, 96);
   doc.text('Transaction History', margin, y);
+  doc.setDrawColor(255, 193, 7);
+  doc.setLineWidth(0.8);
+  doc.line(margin, y + 2.5, margin + 52, y + 2.5);
 
-  // divider
-  doc.setDrawColor(15, 52, 96);
-  doc.setLineWidth(0.5);
-  doc.line(margin, y + 2, margin + contentW, y + 2);
+  y += 9;
 
-  y += 8;
+  const txns = loan.transactions && loan.transactions.length > 0
+    ? [...loan.transactions].sort(
+        (a, b) => new Date(a.payment_date).getTime() - new Date(b.payment_date).getTime()
+      )
+    : [];
 
-  if (loan.transactions && loan.transactions.length > 0) {
-    // Sort transactions oldest → newest
-    const sorted = [...loan.transactions].sort(
-      (a, b) => new Date(a.payment_date).getTime() - new Date(b.payment_date).getTime()
-    );
-
-    // Table header
+  if (txns.length === 0) {
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(160, 160, 170);
+    doc.text('No transactions recorded yet.', margin, y + 6);
+  } else {
     const rowH = 8;
-    doc.setFillColor(15, 52, 96);
-    doc.rect(margin, y, contentW, rowH, 'F');
 
-    doc.setFontSize(8);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(255, 255, 255);
-    doc.text('#', margin + 4, y + 5.5);
-    doc.text('Date', margin + 14, y + 5.5);
-    doc.text('Type', margin + 68, y + 5.5);
-    doc.text('Amount', margin + contentW - 4, y + 5.5, { align: 'right' });
+    const drawTableHeader = (yy: number) => {
+      doc.setFillColor(15, 52, 96);
+      doc.rect(margin, yy, contentW, rowH, 'F');
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(255, 255, 255);
+      doc.text('#',    margin + 3, yy + 5.5);
+      doc.text('Date', margin + 12, yy + 5.5);
+      doc.text('Type', margin + 65, yy + 5.5);
+      doc.text('Amount', margin + contentW - 3, yy + 5.5, { align: 'right' });
+    };
 
+    drawTableHeader(y);
     y += rowH;
 
-    // Table rows
-    sorted.forEach((txn, idx) => {
-      // New page if needed
-      if (y + rowH > pageH - 28) {
+    txns.forEach((txn, idx) => {
+      // New page if needed (leave room for footer)
+      if (y + rowH > pageH - 24) {
         doc.addPage();
         y = 20;
-        // Re-draw header on new page
-        doc.setFillColor(15, 52, 96);
-        doc.rect(margin, y, contentW, rowH, 'F');
-        doc.setFontSize(8);
-        doc.setFont('helvetica', 'bold');
-        doc.setTextColor(255, 255, 255);
-        doc.text('#', margin + 4, y + 5.5);
-        doc.text('Date', margin + 14, y + 5.5);
-        doc.text('Type', margin + 68, y + 5.5);
-        doc.text('Amount', margin + contentW - 4, y + 5.5, { align: 'right' });
+        drawTableHeader(y);
         y += rowH;
       }
 
-      const isEven = idx % 2 === 0;
-      if (isEven) {
-        doc.setFillColor(248, 250, 255);
+      if (idx % 2 === 0) {
+        doc.setFillColor(246, 249, 255);
         doc.rect(margin, y, contentW, rowH, 'F');
       }
 
       doc.setFontSize(8.5);
       doc.setFont('helvetica', 'normal');
-      doc.setTextColor(40, 40, 40);
-      doc.text(String(idx + 1), margin + 4, y + 5.5);
-      doc.text(formatDate(txn.payment_date), margin + 14, y + 5.5);
+      doc.setTextColor(40, 40, 50);
+      doc.text(String(idx + 1), margin + 3, y + 5.5);
+      doc.text(formatDate(txn.payment_date), margin + 12, y + 5.5);
 
-      // Payment type badge text
-      const typeText = txn.payment_type === 'interest' ? 'Interest' : txn.payment_type === 'principal' ? 'Principal' : '—';
-      const typeColor: [number, number, number] = txn.payment_type === 'interest' ? [21, 128, 61] : txn.payment_type === 'principal' ? [29, 78, 216] : [100, 100, 100];
+      const typeLabel = txn.payment_type === 'interest' ? 'Interest'
+        : txn.payment_type === 'principal' ? 'Principal' : '—';
+      const typeColor: [number,number,number] =
+        txn.payment_type === 'interest'  ? [21, 128, 61]  :
+        txn.payment_type === 'principal' ? [29, 78, 216]  :
+        [130, 130, 130];
+      doc.setFont('helvetica', 'bold');
       doc.setTextColor(...typeColor);
-      doc.setFont('helvetica', 'bold');
-      doc.text(typeText, margin + 68, y + 5.5);
+      doc.text(typeLabel, margin + 65, y + 5.5);
 
-      doc.setFont('helvetica', 'bold');
-      doc.setTextColor(20, 20, 20);
-      doc.text(formatCurrency(txn.amount), margin + contentW - 4, y + 5.5, { align: 'right' });
+      doc.setTextColor(20, 20, 30);
+      doc.text(formatCurrency(txn.amount), margin + contentW - 3, y + 5.5, { align: 'right' });
 
-      // Row bottom border
-      doc.setDrawColor(230, 235, 245);
+      doc.setDrawColor(225, 232, 245);
       doc.setLineWidth(0.2);
       doc.line(margin, y + rowH, margin + contentW, y + rowH);
 
@@ -239,35 +249,47 @@ export const generateTenderReceipt = (
     doc.setFontSize(9);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(255, 255, 255);
-    doc.text(`Total Paid: ${formatCurrency(amountPaid)}`, margin + contentW - 4, y + 6, { align: 'right' });
-    doc.text(`${sorted.length} Payment(s)`, margin + 4, y + 6);
-    y += 9;
-  } else {
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(150, 150, 150);
-    doc.text('No transactions recorded yet.', margin, y + 6);
-    y += 14;
+    doc.text(`${txns.length} Payment(s)`, margin + 4, y + 6);
+    doc.text(`Total Paid: ${formatCurrency(amountPaid)}`, margin + contentW - 3, y + 6, { align: 'right' });
   }
 
-  // ── Footer ──────────────────────────────────────────────────────────────
-  const footerY = pageH - 16;
+  // ── Footer (last page) ─────────────────────────────────────────────────
+  const footerY = pageH - 14;
   doc.setFillColor(15, 52, 96);
-  doc.rect(0, footerY - 4, pageW, 20, 'F');
+  doc.rect(0, footerY - 3, pageW, 20, 'F');
+  doc.setFillColor(255, 193, 7);
+  doc.rect(0, footerY - 3, pageW, 1.5, 'F');
+
   doc.setFontSize(8);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(180, 210, 255);
-  doc.text('Sri Vinayaka Tenders  |  Thank you for your business', pageW / 2, footerY + 4, { align: 'center' });
-
-  // Page number
-  doc.setTextColor(140, 170, 210);
   doc.text(
-    `Generated: ${new Date().toLocaleDateString('en-IN')}`,
-    margin,
-    footerY + 4
+    'Sri Vinayaka Tenders  |  Thank you for your business',
+    pageW / 2, footerY + 4, { align: 'center' }
   );
+  doc.setTextColor(140, 170, 210);
+  doc.text(`Generated: ${new Date().toLocaleDateString('en-IN')}`, margin, footerY + 4);
+};
 
-  // ── Save ─────────────────────────────────────────────────────────────────
+export const generateTenderReceipt = async (
+  loan: Loan,
+  t: (key: string) => string,
+  lang: Language,
+  logoSrc?: string
+) => {
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+
+  let logoDataUri: string | null = null;
+  if (logoSrc) {
+    try {
+      logoDataUri = await loadImageAsBase64(logoSrc);
+    } catch (_) {
+      logoDataUri = null;
+    }
+  }
+
+  buildPdf(doc, loan, logoDataUri);
+
   const safeFilename = sanitizeForFilename(loan.customerName);
   doc.save(`Loan-Receipt-${safeFilename}.pdf`);
 };
