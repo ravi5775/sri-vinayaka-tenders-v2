@@ -39,8 +39,14 @@ export const InvestorProvider: React.FC<{ children: ReactNode }> = ({ children }
   }, [user, showToast]);
 
   useEffect(() => {
-    if (user) fetchInvestors();
-    else { setInvestors([]); setIsLoading(false); }
+    if (user) {
+      fetchInvestors();
+      const interval = setInterval(() => fetchInvestors(true), 30000);
+      return () => clearInterval(interval);
+    } else {
+      setInvestors([]);
+      setIsLoading(false);
+    }
   }, [user, fetchInvestors]);
 
   const addInvestor = async (investorData: Omit<Investor, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'payments'>) => {

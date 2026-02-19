@@ -41,8 +41,15 @@ export const LoanProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   }, [user, showToast]);
 
   useEffect(() => {
-    if (user) fetchLoans();
-    else { setLoans([]); setIsLoading(false); }
+    if (user) {
+      fetchLoans();
+      // Auto-refresh every 30 seconds
+      const interval = setInterval(() => fetchLoans(true), 30000);
+      return () => clearInterval(interval);
+    } else {
+      setLoans([]);
+      setIsLoading(false);
+    }
   }, [user, fetchLoans]);
 
   const addLoan = async (loanData: Partial<Loan>) => {
