@@ -16,20 +16,32 @@ export const calculateInvestorMetrics = (investor: Investor): InvestorMetrics =>
     return { currentBalance: 0, accumulatedProfit, totalPaid, missedMonths: 0, monthlyProfit: 0, status: 'Closed' };
   }
 
+  // Separate payments by type
+  const principalPayments = investor.payments.filter(p => p.payment_type === 'Principal');
+  const interestPayments = investor.payments.filter(p => p.payment_type === 'Interest' || p.payment_type === 'Profit' || !p.payment_type);
+
+  const totalPrincipalPaid = principalPayments.reduce((sum, p) => sum + p.amount, 0);
+  const totalInterestPaid = interestPayments.reduce((sum, p) => sum + p.amount, 0);
+  const totalPaid = totalPrincipalPaid + totalInterestPaid;
+
+  // For InterestRatePlan: principal payments reduce the investment base
+  const effectiveInvestment = investor.investmentType === 'InterestRatePlan'
+    ? Math.max(0, investor.investmentAmount - totalPrincipalPaid)
+    : investor.investmentAmount;
+
   const startDate = new Date(investor.startDate);
   const today = new Date();
-  const monthlyProfit = investor.investmentAmount * (investor.profitRate / 100);
+  const monthlyProfit = effectiveInvestment * (investor.profitRate / 100);
   let monthsCompleted = (today.getFullYear() - startDate.getFullYear()) * 12 + (today.getMonth() - startDate.getMonth());
   if (today.getDate() < startDate.getDate()) monthsCompleted--;
   monthsCompleted = Math.max(0, monthsCompleted);
 
   const accumulatedProfit = monthlyProfit * monthsCompleted;
-  const totalPaid = investor.payments.reduce((sum, p) => sum + p.amount, 0);
-  const pendingProfit = accumulatedProfit - totalPaid;
+  const pendingProfit = accumulatedProfit - totalInterestPaid;
   const missedMonths = monthlyProfit > 0 ? Math.floor(Math.max(0, pendingProfit) / monthlyProfit) : 0;
   let status: 'On Track' | 'Delayed' | 'Closed' = 'On Track';
   if (pendingProfit > 0.01) status = 'Delayed';
-  const currentBalance = investor.investmentAmount + Math.max(0, pendingProfit);
+  const currentBalance = effectiveInvestment + Math.max(0, pendingProfit);
 
   return { currentBalance, accumulatedProfit, totalPaid, missedMonths, monthlyProfit, status };
 };
