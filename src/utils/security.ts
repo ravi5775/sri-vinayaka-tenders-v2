@@ -90,7 +90,7 @@ export const loginSchema = z.object({
 /** Loan form — Finance */
 export const financeSchema = z.object({
   customerName: z.string().trim().min(2, 'Name must be at least 2 characters').max(100, 'Name too long'),
-  phone: z.string().trim().regex(/^\d{10}$/, 'Phone must be exactly 10 digits'),
+  phone: z.string().trim().regex(/^\d{10}$/, 'Phone must be exactly 10 digits').optional().or(z.literal('')),
   loanAmount: positiveNumber('Loan amount'),
   givenAmount: z.number().min(0, 'Given amount cannot be negative'),
   interestRate: z.number().min(0, 'Interest rate cannot be negative').max(100, 'Interest rate cannot exceed 100%'),
@@ -104,7 +104,7 @@ export const financeSchema = z.object({
 /** Loan form — Tender */
 export const tenderSchema = z.object({
   customerName: z.string().trim().min(2, 'Name must be at least 2 characters').max(100, 'Name too long'),
-  phone: z.string().trim().regex(/^\d{10}$/, 'Phone must be exactly 10 digits'),
+  phone: z.string().trim().regex(/^\d{10}$/, 'Phone must be exactly 10 digits').optional().or(z.literal('')),
   loanAmount: positiveNumber('Loan amount (repayment)'),
   givenAmount: positiveNumber('Given amount'),
   durationInDays: z.number().int().min(1, 'Duration must be at least 1 day').max(1825, 'Duration too long'),
@@ -117,7 +117,7 @@ export const tenderSchema = z.object({
 /** Loan form — Interest Rate */
 export const interestRateSchema = z.object({
   customerName: z.string().trim().min(2, 'Name must be at least 2 characters').max(100, 'Name too long'),
-  phone: z.string().trim().regex(/^\d{10}$/, 'Phone must be exactly 10 digits'),
+  phone: z.string().trim().regex(/^\d{10}$/, 'Phone must be exactly 10 digits').optional().or(z.literal('')),
   loanAmount: positiveNumber('Principal amount'),
   givenAmount: z.number().min(0, 'Given amount cannot be negative'),
   interestRate: z.number().min(0.01, 'Interest rate must be > 0').max(100, 'Interest rate cannot exceed 100%'),
