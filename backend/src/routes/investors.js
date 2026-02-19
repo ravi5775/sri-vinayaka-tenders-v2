@@ -34,8 +34,8 @@ const mapPayment = (row) => ({
 // GET /api/investors
 router.get('/', async (req, res) => {
   try {
-    const invResult = await pool.query('SELECT * FROM investors WHERE user_id = $1 ORDER BY created_at DESC', [req.user.id]);
-    const payResult = await pool.query('SELECT * FROM investor_payments WHERE user_id = $1 ORDER BY payment_date DESC', [req.user.id]);
+    const invResult = await pool.query('SELECT * FROM investors ORDER BY created_at DESC');
+    const payResult = await pool.query('SELECT * FROM investor_payments ORDER BY payment_date DESC');
 
     const payMap = {};
     payResult.rows.forEach(p => {
@@ -73,8 +73,8 @@ router.put('/:id', async (req, res) => {
     const { name, investmentAmount, investmentType, profitRate, startDate, status } = req.body;
     const result = await pool.query(
       `UPDATE investors SET name=$1, investment_amount=$2, investment_type=$3, profit_rate=$4, start_date=$5, status=$6
-       WHERE id=$7 AND user_id=$8 RETURNING *`,
-      [name, investmentAmount, investmentType, profitRate, startDate, status, req.params.id, req.user.id]
+       WHERE id=$7 RETURNING *`,
+      [name, investmentAmount, investmentType, profitRate, startDate, status, req.params.id]
     );
     if (result.rows.length === 0) return res.status(404).json({ error: 'Investor not found' });
     res.json(mapInvestor(result.rows[0]));
@@ -87,8 +87,8 @@ router.put('/:id', async (req, res) => {
 // DELETE /api/investors/:id
 router.delete('/:id', async (req, res) => {
   try {
-    await pool.query('DELETE FROM investor_payments WHERE investor_id = $1 AND user_id = $2', [req.params.id, req.user.id]);
-    const result = await pool.query('DELETE FROM investors WHERE id = $1 AND user_id = $2 RETURNING id', [req.params.id, req.user.id]);
+    await pool.query('DELETE FROM investor_payments WHERE investor_id = $1', [req.params.id]);
+    const result = await pool.query('DELETE FROM investors WHERE id = $1 RETURNING id', [req.params.id]);
     if (result.rows.length === 0) return res.status(404).json({ error: 'Investor not found' });
     res.status(204).send();
   } catch (err) {
@@ -102,7 +102,7 @@ router.delete('/:id', async (req, res) => {
 // POST /api/investors/:investorId/payments
 router.post('/:investorId/payments', async (req, res) => {
   try {
-    const invCheck = await pool.query('SELECT id FROM investors WHERE id = $1 AND user_id = $2', [req.params.investorId, req.user.id]);
+    const invCheck = await pool.query('SELECT id FROM investors WHERE id = $1', [req.params.investorId]);
     if (invCheck.rows.length === 0) return res.status(404).json({ error: 'Investor not found' });
 
     const { amount, payment_date, payment_type, remarks } = req.body;
@@ -123,8 +123,8 @@ router.put('/:investorId/payments/:payId', async (req, res) => {
     const { amount, payment_date, payment_type, remarks } = req.body;
     const result = await pool.query(
       `UPDATE investor_payments SET amount=COALESCE($1,amount), payment_date=COALESCE($2,payment_date), payment_type=COALESCE($3,payment_type), remarks=COALESCE($4,remarks)
-       WHERE id=$5 AND user_id=$6 RETURNING *`,
-      [amount, payment_date, payment_type, remarks, req.params.payId, req.user.id]
+       WHERE id=$5 RETURNING *`,
+      [amount, payment_date, payment_type, remarks, req.params.payId]
     );
     if (result.rows.length === 0) return res.status(404).json({ error: 'Payment not found' });
 
@@ -141,7 +141,7 @@ router.put('/:investorId/payments/:payId', async (req, res) => {
 // DELETE /api/investors/:investorId/payments/:payId
 router.delete('/:investorId/payments/:payId', async (req, res) => {
   try {
-    const result = await pool.query('DELETE FROM investor_payments WHERE id = $1 AND user_id = $2 RETURNING id', [req.params.payId, req.user.id]);
+    const result = await pool.query('DELETE FROM investor_payments WHERE id = $1 RETURNING id', [req.params.payId]);
     if (result.rows.length === 0) return res.status(404).json({ error: 'Payment not found' });
     res.status(204).send();
   } catch (err) {

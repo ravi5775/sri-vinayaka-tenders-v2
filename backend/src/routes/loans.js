@@ -39,12 +39,10 @@ const mapTransaction = (row) => ({
 router.get('/', async (req, res) => {
   try {
     const loansResult = await pool.query(
-      'SELECT * FROM loans WHERE user_id = $1 ORDER BY created_at DESC',
-      [req.user.id]
+      'SELECT * FROM loans ORDER BY created_at DESC'
     );
     const txnResult = await pool.query(
-      'SELECT * FROM transactions WHERE user_id = $1 ORDER BY payment_date DESC',
-      [req.user.id]
+      'SELECT * FROM transactions ORDER BY payment_date DESC'
     );
 
     const txnMap = {};
@@ -83,8 +81,8 @@ router.put('/:id', async (req, res) => {
     const { customerName, phone, loanType, loanAmount, givenAmount, interestRate, durationValue, durationUnit, startDate, status } = req.body;
     const result = await pool.query(
       `UPDATE loans SET customer_name=$1, phone=$2, loan_type=$3, loan_amount=$4, given_amount=$5, interest_rate=$6, duration_value=$7, duration_unit=$8, start_date=$9, status=$10
-       WHERE id=$11 AND user_id=$12 RETURNING *`,
-      [customerName, phone, loanType, loanAmount, givenAmount, interestRate, durationValue, durationUnit, startDate, status, req.params.id, req.user.id]
+       WHERE id=$11 RETURNING *`,
+      [customerName, phone, loanType, loanAmount, givenAmount, interestRate, durationValue, durationUnit, startDate, status, req.params.id]
     );
     if (result.rows.length === 0) return res.status(404).json({ error: 'Loan not found' });
     res.json(mapLoan(result.rows[0]));
@@ -102,8 +100,8 @@ router.post('/delete-multiple', async (req, res) => {
       return res.status(400).json({ error: 'Loan IDs are required' });
     }
     // Delete transactions first (cascade should handle but be explicit)
-    await pool.query('DELETE FROM transactions WHERE loan_id = ANY($1::uuid[]) AND user_id = $2', [ids, req.user.id]);
-    await pool.query('DELETE FROM loans WHERE id = ANY($1::uuid[]) AND user_id = $2', [ids, req.user.id]);
+    await pool.query('DELETE FROM transactions WHERE loan_id = ANY($1::uuid[])', [ids]);
+    await pool.query('DELETE FROM loans WHERE id = ANY($1::uuid[])', [ids]);
     res.status(204).send();
   } catch (err) {
     console.error('Delete loans error:', err);
@@ -118,7 +116,7 @@ router.post('/:loanId/transactions', async (req, res) => {
   try {
     const { amount, payment_date } = req.body;
     // Verify loan belongs to user
-    const loanCheck = await pool.query('SELECT id FROM loans WHERE id = $1 AND user_id = $2', [req.params.loanId, req.user.id]);
+    const loanCheck = await pool.query('SELECT id FROM loans WHERE id = $1', [req.params.loanId]);
     if (loanCheck.rows.length === 0) return res.status(404).json({ error: 'Loan not found' });
 
     const result = await pool.query(
@@ -137,8 +135,8 @@ router.put('/:loanId/transactions/:txnId', async (req, res) => {
   try {
     const { amount, payment_date } = req.body;
     const result = await pool.query(
-      'UPDATE transactions SET amount = COALESCE($1, amount), payment_date = COALESCE($2, payment_date) WHERE id = $3 AND user_id = $4 RETURNING *',
-      [amount, payment_date, req.params.txnId, req.user.id]
+      'UPDATE transactions SET amount = COALESCE($1, amount), payment_date = COALESCE($2, payment_date) WHERE id = $3 RETURNING *',
+      [amount, payment_date, req.params.txnId]
     );
     if (result.rows.length === 0) return res.status(404).json({ error: 'Transaction not found' });
     res.json(mapTransaction(result.rows[0]));
@@ -151,7 +149,7 @@ router.put('/:loanId/transactions/:txnId', async (req, res) => {
 // DELETE /api/loans/:loanId/transactions/:txnId
 router.delete('/:loanId/transactions/:txnId', async (req, res) => {
   try {
-    const result = await pool.query('DELETE FROM transactions WHERE id = $1 AND user_id = $2 RETURNING id', [req.params.txnId, req.user.id]);
+    const result = await pool.query('DELETE FROM transactions WHERE id = $1 RETURNING id', [req.params.txnId]);
     if (result.rows.length === 0) return res.status(404).json({ error: 'Transaction not found' });
     res.status(204).send();
   } catch (err) {
