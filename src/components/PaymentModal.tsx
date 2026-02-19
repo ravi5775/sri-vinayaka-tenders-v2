@@ -104,8 +104,9 @@ const PaymentModal: React.FC<PaymentModalProps> = ({ loanId, onClose }) => {
                     <thead className="bg-muted">
                       <tr>
                         <th className="p-2 text-left font-medium">{t('Date')}</th>
-                        <th className="p-2 text-left font-medium">{t('Amount')}</th>
-                        <th className="p-2 text-right font-medium">{t('Actions')}</th>
+                         <th className="p-2 text-left font-medium">{t('Amount')}</th>
+                         <th className="p-2 text-left font-medium">Type</th>
+                         <th className="p-2 text-right font-medium">{t('Actions')}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -126,6 +127,19 @@ const PaymentModal: React.FC<PaymentModalProps> = ({ loanId, onClose }) => {
                             <>
                               <td className="p-2">{new Date(txn.payment_date).toLocaleDateString()}</td>
                               <td className="p-2">₹{txn.amount.toLocaleString('en-IN')}</td>
+              <td className="p-2">
+                                {txn.payment_type ? (
+                                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${
+                                    txn.payment_type === 'interest'
+                                      ? 'bg-primary/10 text-primary'
+                                      : 'bg-secondary text-secondary-foreground border border-border'
+                                  }`}>
+                                    {txn.payment_type === 'interest' ? '🟢 Interest' : '🔵 Principal'}
+                                  </span>
+                                ) : (
+                                  <span className="text-xs text-muted-foreground">—</span>
+                                )}
+                              </td>
                               <td className="p-2 text-right">
                                 <div className="flex items-center justify-end gap-2">
                                   <button onClick={() => handleEditStart(txn)} className="p-1 text-muted-foreground hover:bg-muted rounded-full" title={t('Edit')}><Edit size={16} /></button>
