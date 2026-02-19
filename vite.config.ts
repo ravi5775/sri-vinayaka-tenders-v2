@@ -36,4 +36,39 @@ export default defineConfig(({ mode }) => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  build: {
+    chunkSizeWarningLimit: 600,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // React core
+          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+          // UI component library
+          'vendor-radix': [
+            '@radix-ui/react-dialog',
+            '@radix-ui/react-dropdown-menu',
+            '@radix-ui/react-select',
+            '@radix-ui/react-tabs',
+            '@radix-ui/react-toast',
+            '@radix-ui/react-tooltip',
+            '@radix-ui/react-popover',
+            '@radix-ui/react-accordion',
+            '@radix-ui/react-checkbox',
+            '@radix-ui/react-label',
+            '@radix-ui/react-switch',
+          ],
+          // Charts
+          'vendor-recharts': ['recharts'],
+          // PDF generation (heavy — split out)
+          'vendor-pdf': ['jspdf'],
+          // Date utilities
+          'vendor-date': ['date-fns'],
+          // Form handling
+          'vendor-forms': ['react-hook-form', '@hookform/resolvers', 'zod'],
+          // Tanstack query
+          'vendor-query': ['@tanstack/react-query'],
+        },
+      },
+    },
+  },
 }));
