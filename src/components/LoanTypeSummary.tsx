@@ -42,7 +42,7 @@ const LoanTypeSummary: React.FC<LoanTypeSummaryProps> = ({ loans, loanType }) =>
           <Metric title={t('Total Profit')} value={summary.totalProfit} />
           <Metric title={t('Total Principal')} value={summary.totalPrincipal} />
           <Metric title={t('Total Given')} value={summary.totalGiven} />
-          <Metric title={t('Total Interest')} value={summary.totalInterest} />
+          
         </div>
         <div>
           <h4 className="font-semibold text-muted-foreground text-sm mb-3">{t('Financials')}</h4>
