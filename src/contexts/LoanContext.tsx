@@ -12,6 +12,7 @@ interface LoanContextType {
   deleteMultipleLoans: (loanIds: string[]) => Promise<void>;
   getLoanById: (id: string) => Loan | undefined;
   addTransaction: (loanId: string, transaction: Omit<Transaction, 'id' | 'loan_id' | 'user_id' | 'created_at'>) => Promise<void>;
+
   updateTransaction: (loanId: string, transaction: Transaction) => Promise<void>;
   deleteTransaction: (loanId: string, transactionId: string) => Promise<void>;
   refreshLoans: () => Promise<void>;

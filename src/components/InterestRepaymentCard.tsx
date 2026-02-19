@@ -81,6 +81,7 @@ const InterestRepaymentCard: React.FC<InterestRepaymentCardProps> = ({ title }) 
       await addTransaction(selectedLoan.id, {
         amount: paymentAmount,
         payment_date: new Date(date).toISOString(),
+        payment_type: paymentFor,
       });
       const typeLabel = paymentFor === 'interest' ? 'Interest' : 'Principal';
       showToast(`${typeLabel} payment of ₹${paymentAmount.toLocaleString('en-IN')} logged for ${selectedLoan.customerName}.`, 'success');

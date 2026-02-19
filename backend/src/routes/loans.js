@@ -32,6 +32,7 @@ const mapTransaction = (row) => ({
   user_id: row.user_id,
   amount: Number(row.amount),
   payment_date: row.payment_date,
+  payment_type: row.payment_type || null,
   created_at: row.created_at,
 });
 
@@ -114,14 +115,14 @@ router.post('/delete-multiple', async (req, res) => {
 // POST /api/loans/:loanId/transactions
 router.post('/:loanId/transactions', async (req, res) => {
   try {
-    const { amount, payment_date } = req.body;
-    // Verify loan belongs to user
+    const { amount, payment_date, payment_type } = req.body;
+    // Verify loan exists
     const loanCheck = await pool.query('SELECT id FROM loans WHERE id = $1', [req.params.loanId]);
     if (loanCheck.rows.length === 0) return res.status(404).json({ error: 'Loan not found' });
 
     const result = await pool.query(
-      'INSERT INTO transactions (loan_id, user_id, amount, payment_date) VALUES ($1, $2, $3, $4) RETURNING *',
-      [req.params.loanId, req.user.id, amount, payment_date || new Date().toISOString().split('T')[0]]
+      'INSERT INTO transactions (loan_id, user_id, amount, payment_date, payment_type) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+      [req.params.loanId, req.user.id, amount, payment_date || new Date().toISOString().split('T')[0], payment_type || null]
     );
     res.status(201).json(mapTransaction(result.rows[0]));
   } catch (err) {
