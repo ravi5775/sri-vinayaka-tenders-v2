@@ -8,9 +8,13 @@ const { authenticate, hashToken } = require('../middleware/auth');
 const router = express.Router();
 
 // Generate a unique device ID from request headers
+const getClientIp = (req) => {
+  return (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.headers['x-real-ip'] || req.ip || 'unknown';
+};
+
 const getDeviceId = (req) => {
   const ua = req.headers['user-agent'] || 'unknown';
-  const ip = req.ip || req.headers['x-forwarded-for'] || 'unknown';
+  const ip = getClientIp(req);
   return crypto.createHash('md5').update(`${ua}-${ip}`).digest('hex').substring(0, 16);
 };
 
@@ -74,10 +78,11 @@ router.post('/login', async (req, res) => {
       [tokenHash, currentDeviceId, user.id]
     );
 
-    // Log login history
+    // Log login history - get real client IP
+    const clientIp = getClientIp(req);
     await pool.query(
       'INSERT INTO login_history (user_id, email, ip_address, user_agent, device_id) VALUES ($1, $2, $3, $4, $5)',
-      [user.id, user.email, req.ip || 'unknown', req.headers['user-agent'] || 'unknown', currentDeviceId]
+      [user.id, user.email, clientIp, req.headers['user-agent'] || 'unknown', currentDeviceId]
     );
 
     res.json({
