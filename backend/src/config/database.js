@@ -6,11 +6,14 @@ const pool = new Pool({
   database: process.env.DB_NAME || 'sri_vinayaka',
   user: process.env.DB_USER || 'postgres',
   password: process.env.DB_PASSWORD || '',
-  max: 20,
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 5000,
-  // #8 Fix: Kill queries that run longer than 30 seconds
+  // Increased pool for better concurrency — uses more RAM but faster
+  max: 50,
+  idleTimeoutMillis: 60000,
+  connectionTimeoutMillis: 3000,
   statement_timeout: 30000,
+  // Keep connections warm — avoids cold-start latency
+  min: 10,
+  allowExitOnIdle: false,
 });
 
 // #4 Fix: Connection retry/reconnect — log but don't crash on transient errors

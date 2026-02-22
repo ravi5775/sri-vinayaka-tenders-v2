@@ -41,52 +41,35 @@ const mapTransaction = (row) => ({
   created_at: row.created_at,
 });
 
-// GET /api/loans — supports optional pagination via ?page=1&limit=50
+// GET /api/loans — single JOIN query for speed
 router.get('/', async (req, res) => {
   try {
-    const page = Math.max(1, parseInt(req.query.page) || 0);
-    const limit = Math.min(500, Math.max(1, parseInt(req.query.limit) || 0));
-    const usePagination = req.query.page || req.query.limit;
+    // Single query: fetch loans with transactions via LEFT JOIN
+    const result = await pool.query(`
+      SELECT l.*, 
+        COALESCE(json_agg(
+          json_build_object(
+            'id', t.id, 'loan_id', t.loan_id, 'user_id', t.user_id,
+            'amount', t.amount, 'payment_date', t.payment_date,
+            'payment_type', t.payment_type, 'created_at', t.created_at
+          ) ORDER BY t.payment_date DESC
+        ) FILTER (WHERE t.id IS NOT NULL), '[]') AS txns
+      FROM loans l
+      LEFT JOIN transactions t ON t.loan_id = l.id
+      GROUP BY l.id
+      ORDER BY l.created_at DESC
+    `);
 
-    let loansResult;
-    if (usePagination) {
-      const offset = (page - 1) * limit;
-      loansResult = await pool.query(
-        'SELECT * FROM loans ORDER BY created_at DESC LIMIT $1 OFFSET $2',
-        [limit, offset]
-      );
-    } else {
-      // Backward-compatible: return all loans if no pagination params
-      loansResult = await pool.query('SELECT * FROM loans ORDER BY created_at DESC');
-    }
-
-    // Fetch transactions only for the returned loans
-    const loanIds = loansResult.rows.map(r => r.id);
-    let txnResult;
-    if (loanIds.length > 0) {
-      txnResult = await pool.query(
-        'SELECT * FROM transactions WHERE loan_id = ANY($1::uuid[]) ORDER BY payment_date DESC',
-        [loanIds]
-      );
-    } else {
-      txnResult = { rows: [] };
-    }
-
-    const txnMap = {};
-    txnResult.rows.forEach(t => {
-      if (!txnMap[t.loan_id]) txnMap[t.loan_id] = [];
-      txnMap[t.loan_id].push(mapTransaction(t));
+    const loans = result.rows.map(row => {
+      const transactions = row.txns.map(t => ({
+        ...t,
+        amount: Number(t.amount),
+        payment_type: t.payment_type || null,
+      }));
+      return mapLoan(row, transactions);
     });
 
-    const loans = loansResult.rows.map(row => mapLoan(row, txnMap[row.id] || []));
-
-    if (usePagination) {
-      const countResult = await pool.query('SELECT COUNT(*) FROM loans');
-      const total = parseInt(countResult.rows[0].count);
-      res.json({ loans, total, page, limit, totalPages: Math.ceil(total / limit) });
-    } else {
-      res.json(loans);
-    }
+    res.json(loans);
   } catch (err) {
     console.error('Get loans error:', err);
     res.status(500).json({ error: 'Internal server error' });
