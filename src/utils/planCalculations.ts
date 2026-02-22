@@ -117,20 +117,20 @@ const getInterestRateCalculationDetails = (loan: Loan) => {
   let runningPrincipal = loan.loanAmount;
 
   while (periodStart < today) {
-    if (periodEnd <= today) {
-      // Full period elapsed — calculate interest FIRST on current principal
-      const interestForPeriod = runningPrincipal * (ratePerPeriod / 100);
-      totalInterestAccrued += interestForPeriod;
-      periodsElapsed++;
-    }
-
-    // Apply principal payments AFTER interest calc — affects next period onward
+    // Apply principal payments BEFORE interest calc — reduces principal for this period
     for (const pp of sortedPrincipalPayments) {
       const ppDate = new Date(pp.payment_date);
       ppDate.setHours(0, 0, 0, 0);
       if (ppDate >= periodStart && ppDate < periodEnd && ppDate <= today) {
         runningPrincipal = Math.max(0, runningPrincipal - pp.amount);
       }
+    }
+
+    if (periodEnd <= today) {
+      // Full period elapsed — calculate interest on current (post-payment) principal
+      const interestForPeriod = runningPrincipal * (ratePerPeriod / 100);
+      totalInterestAccrued += interestForPeriod;
+      periodsElapsed++;
     }
 
     periodStart = periodEnd;
