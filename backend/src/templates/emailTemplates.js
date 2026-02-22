@@ -247,10 +247,57 @@ const highPaymentAlertTemplate = (adminName, paidByUser, amount, paymentDate, lo
   return baseLayout(content, recipientEmail);
 };
 
+const welcomeUserTemplate = (displayName, email, password, loginUrl) => {
+  const content = `
+    <div style="text-align:center;margin-bottom:28px;">
+      <div style="display:inline-block;background-color:#dcfce7;border-radius:50%;padding:16px;margin-bottom:16px;">
+        <span style="font-size:32px;">🎉</span>
+      </div>
+      <h2 style="margin:0;color:#1e293b;font-size:20px;font-weight:700;">Welcome to ${APP_NAME}!</h2>
+    </div>
+    <p style="color:#475569;font-size:14px;line-height:1.7;margin:0 0 20px;">
+      Hello <strong style="color:#1e293b;">${displayName || 'User'}</strong>,
+    </p>
+    <p style="color:#475569;font-size:14px;line-height:1.7;margin:0 0 24px;">
+      Your account has been created on the <strong>${APP_NAME}</strong> platform. Here are your login credentials:
+    </p>
+    <div style="background-color:#f1f5f9;border-radius:12px;padding:20px 24px;margin:20px 0;">
+      <table width="100%" cellpadding="0" cellspacing="0">
+        <tr>
+          <td style="padding:8px 0;">
+            <span style="color:#64748b;font-size:13px;">📧 Login Email:</span><br>
+            <strong style="color:#1e293b;font-size:15px;">${email}</strong>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:8px 0;border-top:1px solid #e2e8f0;">
+            <span style="color:#64748b;font-size:13px;">🔑 Password:</span><br>
+            <code style="color:#059669;font-size:16px;font-weight:700;background:#ecfdf5;padding:4px 12px;border-radius:6px;letter-spacing:1px;">${password}</code>
+          </td>
+        </tr>
+      </table>
+    </div>
+    <div style="text-align:center;margin:28px 0;">
+      <a href="${loginUrl}" style="display:inline-block;background:linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);color:#ffffff;text-decoration:none;padding:14px 36px;border-radius:10px;font-size:15px;font-weight:600;letter-spacing:0.3px;box-shadow:0 4px 12px rgba(37,99,235,0.3);">
+        🚀 Login Now
+      </a>
+    </div>
+    <div style="background-color:#fef9c3;border:1px solid #fde047;border-radius:10px;padding:16px 20px;margin:24px 0;">
+      <p style="margin:0;color:#854d0e;font-size:13px;line-height:1.6;">
+        ⚠️ <strong>Security Reminders:</strong><br>
+        • Please change your password after your first login.<br>
+        • Do not share your credentials with anyone.<br>
+        • If you did not expect this email, please contact your administrator.
+      </p>
+    </div>`;
+  return baseLayout(content, email);
+};
+
 module.exports = {
   passwordResetTemplate,
   adminPasswordResetTemplate,
   backupEmailTemplate,
   notificationEmailTemplate,
   highPaymentAlertTemplate,
+  welcomeUserTemplate,
 };
