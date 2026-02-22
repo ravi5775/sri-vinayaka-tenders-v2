@@ -27,7 +27,7 @@ const sanitizeInput = (str) => {
 
 // POST /api/auth/login
 router.post('/login', [
-  body('email').trim().isEmail().normalizeEmail().withMessage('Valid email is required'),
+  body('email').trim().isEmail().normalizeEmail({ gmail_remove_dots: false }).withMessage('Valid email is required'),
   body('password').notEmpty().withMessage('Password is required'),
 ], async (req, res) => {
   const errors = validationResult(req);
@@ -135,7 +135,7 @@ router.get('/me', authenticate, async (req, res) => {
 
 // POST /api/auth/forgot-password
 router.post('/forgot-password', [
-  body('email').trim().isEmail().normalizeEmail().withMessage('Valid email is required'),
+  body('email').trim().isEmail().normalizeEmail({ gmail_remove_dots: false }).withMessage('Valid email is required'),
 ], async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
