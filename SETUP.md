@@ -226,7 +226,49 @@ curl -X POST http://localhost:3001/api/admin/restore \
 
 ## Production Deployment
 
+### Fresh Production Install
+
+```bash
+# 1. Clone the repo
+git clone https://github.com/ravi5775/sri-vinayaka-tenders.git ~/v2
+cd ~/v2
+
+# 2. Create database and load complete schema
+createdb -U postgres sri_vinayaka
+psql -U postgres -d sri_vinayaka -f backend/database/schema.sql
+
+# 3. Setup backend
+cd backend
+cp .env.example .env
+# Edit .env with your production values (DB_PASSWORD, JWT_SECRET, etc.)
+npm install
+
+# 4. Seed default admin account
+node database/seed.js
+
+# 5. Build frontend
+cd ~/v2
+npm install
+npm run build
+
+# 6. Start with PM2
+cd backend
+pm2 start src/server.js --name svt-backend
+pm2 save
+```
+
+### Existing Production Update
+
+```bash
+cd ~/v2/backend && git pull origin main
+npm install
+pm2 restart svt-backend
+```
+
+> The `autoMigrate` runs on every startup and applies any new schema changes automatically. No manual SQL needed.
+
 ### Build Frontend
+
 ```bash
 # From project root
 npm run build
@@ -234,18 +276,31 @@ npm run build
 
 This creates a `dist/` folder with optimized static files.
 
-### Run in Production
+### Run in Production (without PM2)
+
 ```bash
 cd backend
-
-# Set production environment in .env
-# NODE_ENV=production
-
-# Start server
 NODE_ENV=production node src/server.js
 ```
 
 The backend automatically serves the built frontend from `dist/` in production mode. Access everything at http://localhost:3001.
+
+### Reset Admin Password
+
+If you forget your admin password, run on the server:
+
+```bash
+cd ~/v2/backend
+node -e "
+const bcrypt = require('bcryptjs');
+bcrypt.hash('YourNewPassword', 12).then(h => {
+  const { pool } = require('./src/config/database');
+  pool.query('UPDATE users SET password_hash = \$1 WHERE email = \$2', [h, 'your@email.com'])
+    .then(() => { console.log('✅ Password updated'); process.exit(0); })
+    .catch(e => { console.error(e); process.exit(1); });
+});
+"
+```
 
 ---
 
@@ -283,22 +338,30 @@ project-root/
 │   ├── package.json          # Backend dependencies
 │   ├── README.md             # Backend-specific docs
 │   ├── database/
-│   │   ├── schema.sql        # PostgreSQL table definitions
-│   │   └── seed.js           # Default admin seeder
+│   │   ├── schema.sql        # Complete PostgreSQL schema (all tables + functions)
+│   │   ├── full_migration_for_psql.sql  # Legacy full migration (reference)
+│   │   ├── migration_single_session.sql # Single session migration
+│   │   ├── migration_high_payment_alerts.sql # Alert tables migration
+│   │   └── seed.js           # Admin account seeder
 │   └── src/
 │       ├── server.js         # Express app entry point
 │       ├── config/
-│       │   ├── database.js   # PostgreSQL connection pool
+│       │   ├── database.js   # PostgreSQL pool (with retry & timeout)
+│       │   ├── autoMigrate.js # Auto-migration on startup
+│       │   ├── email.js      # SMTP email config
 │       │   └── mongodb.js    # MongoDB Atlas connection
 │       ├── middleware/
-│       │   └── auth.js       # JWT authentication
+│       │   ├── auth.js       # JWT authentication
+│       │   └── auditLogger.js # Server-side mutation audit logging
+│       ├── templates/
+│       │   └── emailTemplates.js # Email HTML templates
 │       └── routes/
 │           ├── auth.js       # Login, signup, verify
 │           ├── admin.js      # Admin CRUD, password, history, restore
-│           ├── loans.js      # Loans + transactions CRUD
-│           ├── investors.js  # Investors + payments CRUD
+│           ├── loans.js      # Loans + transactions CRUD (paginated)
+│           ├── investors.js  # Investors + payments CRUD (paginated)
 │           ├── notifications.js
-│           ├── backup.js     # MongoDB Atlas backup
+│           ├── backup.js     # MongoDB Atlas backup (with validation)
 │           └── csrf.js       # CSRF token
 └── SETUP.md                  # This file
 ```
