@@ -1,386 +1,700 @@
-# Sri Vinayaka Tenders - Local Setup Guide
+# Sri Vinayaka Tenders — Complete Setup Guide
 
-## 🖥️ Prerequisites
+> **Author:** @ravi5775 | **Last Updated:** Feb 2026
 
-Install these first:
+---
 
-| Software | Version | Download |
-|----------|---------|----------|
+## 📋 Table of Contents
+
+1. [Architecture Overview](#architecture-overview)
+2. [Local Development Setup](#local-development-setup)
+3. [AWS EC2 Production Deployment](#aws-ec2-production-deployment)
+4. [Post-Deployment Verification](#post-deployment-verification)
+5. [Maintenance & Operations](#maintenance--operations)
+6. [Troubleshooting](#troubleshooting)
+
+---
+
+## Architecture Overview
+
+```
+┌─────────────────────┐        ┌─────────────────────┐
+│   Browser Client    │◄──────►│   Nginx (Port 80)   │
+│   (React SPA)       │        │   Reverse Proxy      │
+└─────────────────────┘        └──────┬──────┬────────┘
+                                      │      │
+                              /api/*  │      │  /* (static)
+                                      ▼      ▼
+                              ┌──────────┐  ┌──────────┐
+                              │ Node.js  │  │ /dist/   │
+                              │ Express  │  │ (built   │
+                              │ Port 3001│  │  React)  │
+                              └────┬─────┘  └──────────┘
+                                   │
+                            ┌──────┴──────┐
+                            ▼             ▼
+                      PostgreSQL     MongoDB Atlas
+                      Port 5432      (Backup Only)
+```
+
+| Component | Purpose |
+|-----------|---------|
+| **React + Vite** | Frontend SPA (loans, investors, dashboard) |
+| **Express.js** | REST API backend with JWT auth |
+| **PostgreSQL** | Primary database (all app data) |
+| **MongoDB Atlas** | Optional backup/restore only |
+| **Nginx** | Reverse proxy, serves static files |
+| **PM2** | Process manager (auto-restart, logs) |
+
+---
+
+## Local Development Setup
+
+### Prerequisites
+
+| Software | Version | Install |
+|----------|---------|---------|
 | Node.js | v18+ | https://nodejs.org/ |
 | PostgreSQL | v15+ | https://www.postgresql.org/download/ |
 | Git | Latest | https://git-scm.com/ |
 
----
+### Step 1: Install PostgreSQL
 
-## Architecture
-
-```
-Terminal 1 (Backend):   cd backend && npm run dev     → http://localhost:3001
-Terminal 2 (Frontend):  npm run dev                   → http://localhost:8080
-PostgreSQL:             Running as system service      → localhost:5432
-```
-
-```
-┌─────────────────┐     REST/Proxy    ┌─────────────────┐
-│   Frontend      │◄────────────────►│   Node.js       │
-│   (React/Vite)  │   /api/* proxy   │   Backend       │
-│   Port: 8080    │                  │   Port: 3001    │
-└─────────────────┘                  └─────────────────┘
-                                             │
-                                     ┌───────┴───────┐
-                                     ▼               ▼
-                              PostgreSQL DB    MongoDB Atlas
-                              Port: 5432       (Backup Only)
-```
-
----
-
-## Step 1: PostgreSQL Database Setup
-
-### Windows
-1. Download installer from https://www.postgresql.org/download/windows/
-2. Run installer, set password for `postgres` user (remember this!)
-3. Add to PATH: `C:\Program Files\PostgreSQL\16\bin`
-4. Open Command Prompt and verify:
-   ```bash
-   psql --version
-   ```
-
-### Linux (Ubuntu/Debian)
+**Ubuntu/Debian:**
 ```bash
 sudo apt update
-sudo apt install postgresql postgresql-contrib
+sudo apt install -y postgresql postgresql-contrib
 sudo systemctl start postgresql
 sudo systemctl enable postgresql
 ```
 
-### macOS
+**macOS:**
 ```bash
 brew install postgresql@16
 brew services start postgresql@16
 ```
 
-### Create Database
+**Windows:**
+1. Download from https://www.postgresql.org/download/windows/
+2. Run installer, set password for `postgres` user
+3. Add `C:\Program Files\PostgreSQL\16\bin` to PATH
+
+### Step 2: Create Database
+
 ```bash
-# Login to PostgreSQL
-psql -U postgres
-# Enter your postgres password when prompted
+sudo -u postgres psql
+```
 
-# Create the database
+```sql
 CREATE DATABASE sri_vinayaka;
-
-# Verify it was created
-\l
-
-# Exit
 \q
 ```
 
----
-
-## Step 2: Backend Setup
-
-Open a terminal and run:
+### Step 3: Clone & Configure
 
 ```bash
-# Navigate to backend folder
-cd backend
-
-# Copy environment template
+git clone https://github.com/ravi5775/sri-vinayaka-tenders.git
+cd sri-vinayaka-tenders/backend
 cp .env.example .env
 ```
 
-### Configure Environment
+Edit `backend/.env` — update at minimum:
+```env
+DB_PASSWORD=YOUR_POSTGRES_PASSWORD
+```
 
-Open `backend/.env` in a text editor and update these values:
+### Step 4: Install & Start
+
+**Terminal 1 — Backend:**
+```bash
+cd backend
+npm install
+node database/seed.js          # Create default admin account
+npm run dev                    # Starts on http://localhost:3001
+```
+
+You should see:
+```
+✅ PostgreSQL connected
+✅ Auto-migration complete
+🚀 Sri Vinayaka Backend running on http://localhost:3001
+```
+
+**Terminal 2 — Frontend:**
+```bash
+cd sri-vinayaka-tenders        # Project root (NOT backend/)
+npm install
+npm run dev                    # Starts on http://localhost:8080
+```
+
+### Step 5: Login
+
+Open http://localhost:8080 and login:
+
+| Field | Default Value |
+|-------|---------------|
+| Email | `admin@example.com` |
+| Password | `password123` |
+
+> ⚠️ Change password immediately via **Settings → Admin Management → Change Your Password**
+
+---
+
+## AWS EC2 Production Deployment
+
+### Step 1: Launch EC2 Instance
+
+1. Go to **AWS Console → EC2 → Launch Instance**
+2. Choose **Amazon Linux 2023** or **Ubuntu 22.04 LTS**
+3. Instance type: **t3.micro** (free tier) or **t3.small** (recommended)
+4. Create or select a key pair (`.pem` file)
+5. Configure **Security Group** inbound rules:
+
+| Port | Protocol | Source | Purpose |
+|------|----------|--------|---------|
+| 22 | TCP | Your IP | SSH |
+| 80 | TCP | 0.0.0.0/0 | HTTP |
+| 443 | TCP | 0.0.0.0/0 | HTTPS (optional) |
+
+> ⚠️ Do NOT open port 3001 publicly — Nginx proxies everything through port 80.
+
+6. **Allocate Elastic IP** (EC2 → Elastic IPs → Allocate → Associate with instance)
+   - This gives a static IP that survives reboots
+
+### Step 2: Connect via SSH
+
+```bash
+chmod 400 your-key.pem
+ssh -i your-key.pem ec2-user@YOUR_ELASTIC_IP
+# Ubuntu: ssh -i your-key.pem ubuntu@YOUR_ELASTIC_IP
+```
+
+### Step 3: Install System Dependencies
+
+**Amazon Linux 2023:**
+```bash
+# Update system
+sudo dnf update -y
+
+# Install Node.js 20.x
+curl -fsSL https://rpm.nodesource.com/setup_20.x | sudo bash -
+sudo dnf install -y nodejs
+
+# Install Git
+sudo dnf install -y git
+
+# Install Nginx
+sudo dnf install -y nginx
+sudo systemctl start nginx
+sudo systemctl enable nginx
+
+# Install PM2
+sudo npm install -g pm2
+
+# Install PostgreSQL 15
+sudo dnf install -y postgresql15-server postgresql15
+sudo postgresql-setup --initdb
+sudo systemctl start postgresql
+sudo systemctl enable postgresql
+
+# Verify all installations
+echo "--- Versions ---"
+node -v && npm -v && nginx -v && pm2 -v && psql --version && git --version
+```
+
+**Ubuntu 22.04:**
+```bash
+# Update system
+sudo apt update && sudo apt upgrade -y
+
+# Install Node.js 20.x
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt install -y nodejs
+
+# Install Nginx
+sudo apt install -y nginx
+
+# Install PM2
+sudo npm install -g pm2
+
+# Install PostgreSQL
+sudo apt install -y postgresql postgresql-contrib
+sudo systemctl start postgresql
+sudo systemctl enable postgresql
+
+# Verify
+node -v && npm -v && nginx -v && pm2 -v && psql --version
+```
+
+### Step 4: Configure PostgreSQL
+
+```bash
+sudo -u postgres psql
+```
+
+```sql
+-- Create database and user
+CREATE DATABASE sri_vinayaka;
+CREATE USER svtuser WITH ENCRYPTED PASSWORD 'YOUR_STRONG_DB_PASSWORD';
+GRANT ALL PRIVILEGES ON DATABASE sri_vinayaka TO svtuser;
+ALTER DATABASE sri_vinayaka OWNER TO svtuser;
+
+-- Grant schema permissions
+\c sri_vinayaka
+GRANT ALL ON SCHEMA public TO svtuser;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO svtuser;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO svtuser;
+
+\q
+```
+
+**For Amazon Linux** — update `pg_hba.conf` to allow password auth:
+```bash
+sudo nano /var/lib/pgsql/data/pg_hba.conf
+```
+Change `ident` to `md5` for local connections:
+```
+local   all   all                 md5
+host    all   all   127.0.0.1/32  md5
+```
+Then restart:
+```bash
+sudo systemctl restart postgresql
+```
+
+### Step 5: Clone & Configure Project
+
+```bash
+cd ~
+git clone https://github.com/ravi5775/sri-vinayaka-tenders.git v2
+cd v2/backend
+cp .env.example .env
+nano .env
+```
+
+**Set these production values** (replace placeholders):
 
 ```env
 # Server
 PORT=3001
-NODE_ENV=development
+NODE_ENV=production
 
-# PostgreSQL - UPDATE THESE
+# URLs — use your Elastic IP (or domain)
+BASE_URL=http://YOUR_ELASTIC_IP
+FRONTEND_URL=http://YOUR_ELASTIC_IP
+APP_IP=http://YOUR_ELASTIC_IP
+
+# PostgreSQL
 DB_HOST=localhost
 DB_PORT=5432
 DB_NAME=sri_vinayaka
-DB_USER=postgres
-DB_PASSWORD=YOUR_POSTGRES_PASSWORD_HERE
+DB_USER=svtuser
+DB_PASSWORD=YOUR_STRONG_DB_PASSWORD
+DB_POOL_SIZE=20
 
-# SECURITY: This secret is used to sign login tokens.
-# We have set a default value so the app starts, but you should change this for production.
-JWT_SECRET=sri_vinayaka_secure_token_secret_key_998877
-JWT_EXPIRES_IN=7d
+# JWT — generate with: openssl rand -hex 32
+JWT_SECRET=PASTE_64_CHAR_RANDOM_STRING
+JWT_REFRESH_SECRET=PASTE_ANOTHER_64_CHAR_RANDOM_STRING
+JWT_EXPIRES_IN=24h
 
-# CORS - Must match your frontend URL
-FRONTEND_URL=http://localhost:8080
+# CORS
+CORS_ORIGIN=http://YOUR_ELASTIC_IP
 
-# MongoDB Atlas (Backup/Restore)
-# Cluster: srivinayakatenders | Database: test
-# Collections: investors (10), loans (69), loginhistories (45), notifications (69), users (5)
-MONGO_URI=mongodb+srv://srivinayakatender_db_user:%40Ravi7pspk@srivinayakatenders.xudvbid.mongodb.net/test?retryWrites=true&w=majority&appName=srivinayakatenders
+# CSRF — generate with: openssl rand -hex 16
+CSRF_SECRET=PASTE_32_CHAR_RANDOM_STRING
+
+# Email (Gmail SMTP)
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_AUTH_REQUIRED=true
+SMTP_USERNAME=your_email@gmail.com
+SMTP_PASSWORD=your_gmail_app_password
+EMAIL_FROM=your_email@gmail.com
+EMAIL_FROM_NAME=Sri Vinayaka Tenders
+EMAIL_REPLY_TO=your_email@gmail.com
+EMAIL_ENABLED=true
+EMAIL_MAX_RETRIES=3
+EMAIL_RETRY_DELAY_SECONDS=5
+
+# MongoDB Atlas (backup — optional)
+MONGO_URI=your_mongo_connection_string
 MONGO_DB_NAME=test
 
-# CSRF - Change to any random string
-CSRF_SECRET=my-csrf-secret-change-this-too
-
-# Default Admin Credentials
-# The system creates this user automatically on first run if it doesn't exist.
+# Default Admin (created on first seed)
 ADMIN_EMAIL=admin@example.com
-ADMIN_PASSWORD=password123
+ADMIN_PASSWORD=ChangeMeImmediately!
 ```
 
-### Install & Initialize
+> 💡 Generate random secrets:
+> ```bash
+> openssl rand -hex 32
+> ```
+
+### Step 6: Install Dependencies & Build
 
 ```bash
-# Install dependencies
+# Backend
+cd ~/v2/backend
 npm install
 
-# Create database tables
-psql -U postgres -d sri_vinayaka -f database/schema.sql
+# Seed admin account
+node database/seed.js
 
-# Seed default admin user
-npm run db:seed
-
-# Start backend server
-npm run dev
+# Frontend
+cd ~/v2
+npm install
+npm run build
 ```
 
-### Verify Backend
+### Step 7: Configure Nginx
 
-You should see in terminal:
-```
-✅ PostgreSQL connected: 2026-02-18T...
-🚀 Sri Vinayaka Backend running on http://localhost:3001
-📊 Health check: http://localhost:3001/api/health
-🔧 Environment: development
+```bash
+sudo nano /etc/nginx/conf.d/sri-vinayaka.conf
 ```
 
-Open http://localhost:3001/api/health in your browser. Expected response:
-```json
-{
-  "status": "ok",
-  "timestamp": "2026-02-18T...",
-  "database": "connected"
+> **Ubuntu users:** use `/etc/nginx/sites-available/sri-vinayaka` instead, then symlink.
+
+Paste this:
+
+```nginx
+server {
+    listen 80;
+    server_name YOUR_ELASTIC_IP;
+    # With domain: server_name yourdomain.com www.yourdomain.com;
+
+    # Serve frontend static files
+    root /home/ec2-user/v2/dist;
+    # Ubuntu: root /home/ubuntu/v2/dist;
+    index index.html;
+
+    # Proxy API to backend
+    location /api/ {
+        proxy_pass http://127.0.0.1:3001;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Origin $http_origin;
+        proxy_cache_bypass $http_upgrade;
+        proxy_read_timeout 90;
+    }
+
+    # SPA fallback — all routes serve index.html
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # Security headers
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+
+    # Gzip
+    gzip on;
+    gzip_types text/plain text/css application/json application/javascript text/xml;
+    gzip_min_length 1000;
+
+    # Max upload size (for backup restore)
+    client_max_body_size 10M;
 }
 ```
 
----
-
-## Step 3: Frontend Setup
-
-Open a **NEW terminal** (keep backend running in the first one):
+Enable and test:
 
 ```bash
-# Navigate to project root (not backend folder)
-cd /path/to/sri-vinayaka-tenders
+# Amazon Linux — remove default config if exists
+sudo rm -f /etc/nginx/conf.d/default.conf
 
-# Install dependencies
-npm install
+# Ubuntu — symlink and remove default
+# sudo ln -sf /etc/nginx/sites-available/sri-vinayaka /etc/nginx/sites-enabled/
+# sudo rm -f /etc/nginx/sites-enabled/default
 
-# Start development server
-npm run dev
+# Test config
+sudo nginx -t
+
+# Restart
+sudo systemctl restart nginx
 ```
 
-Open http://localhost:8080 in your browser.
-
----
-
-## Step 4: Login
-
-Use these default credentials:
-
-| Field | Value |
-|-------|-------|
-| Email | `admin@example.com` |
-| Password | `password123` |
-
-> ⚠️ **IMPORTANT:** Change this password immediately after first login via **Settings → Admin Management → Change Your Password**
-> You can change the default admin credentials in `backend/.env` before running the seed.
-
----
-
-## Step 5: Import Existing Data (Optional)
-
-If you have a backup JSON file from the previous system:
-
-1. Login to the application
-2. Go to **Settings** (gear icon in header)
-3. Click **Restore from File**
-4. Select your backup `.json` file
-
-Or use the API directly:
-```bash
-# Get auth token
-curl -X POST http://localhost:3001/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"email":"admin@example.com","password":"password123"}'
-
-# Use the token to restore backup
-curl -X POST http://localhost:3001/api/admin/restore \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer YOUR_TOKEN_HERE" \
-  -d @path/to/your-backup-file.json
-```
-
----
-
-## Production Deployment
-
-### Fresh Production Install
+### Step 8: Start Backend with PM2
 
 ```bash
-# 1. Clone the repo
-git clone https://github.com/ravi5775/sri-vinayaka-tenders.git ~/v2
-cd ~/v2
+cd ~/v2/backend
 
-# 2. Create database and load complete schema
-createdb -U postgres sri_vinayaka
-psql -U postgres -d sri_vinayaka -f backend/database/schema.sql
-
-# 3. Setup backend
-cd backend
-cp .env.example .env
-# Edit .env with your production values (DB_PASSWORD, JWT_SECRET, etc.)
-npm install
-
-# 4. Seed default admin account
-node database/seed.js
-
-# 5. Build frontend
-cd ~/v2
-npm install
-npm run build
-
-# 6. Start with PM2
-cd backend
+# Start
 pm2 start src/server.js --name svt-backend
+
+# Save process list (survives reboot)
+pm2 save
+
+# Auto-start on boot
+pm2 startup
+# ⬆️ Copy-paste the command it prints and run it!
+
+# Verify
+pm2 logs svt-backend --lines 10
+```
+
+You should see:
+```
+✅ PostgreSQL connected
+✅ Auto-migration complete
+🚀 Sri Vinayaka Backend running on http://localhost:3001
+```
+
+### Step 9: (Optional) Serve Frontend via PM2
+
+If you prefer PM2 over Nginx for the frontend dev server:
+```bash
+cd ~/v2
+pm2 start npx --name svt-frontend -- vite --host 0.0.0.0 --port 8080
 pm2 save
 ```
 
-### Existing Production Update
+> This is NOT recommended for production. Use the Nginx + `dist/` approach above.
+
+---
+
+## Post-Deployment Verification
+
+Run these checks:
 
 ```bash
-cd ~/v2/backend && git pull origin main
+# 1. Backend health
+curl http://localhost:3001/api/health
+
+# 2. Nginx serving frontend
+curl -s http://YOUR_ELASTIC_IP | head -5
+
+# 3. API through Nginx
+curl http://YOUR_ELASTIC_IP/api/health
+
+# 4. PM2 status
+pm2 status
+```
+
+Then open `http://YOUR_ELASTIC_IP` in your browser — you should see the login page.
+
+---
+
+## Maintenance & Operations
+
+### Update Application
+
+```bash
+cd ~/v2
+git pull origin main
+
+# Rebuild frontend
 npm install
-pm2 restart svt-backend
-```
-
-> The `autoMigrate` runs on every startup and applies any new schema changes automatically. No manual SQL needed.
-
-### Build Frontend
-
-```bash
-# From project root
 npm run build
-```
 
-This creates a `dist/` folder with optimized static files.
-
-### Run in Production (without PM2)
-
-```bash
+# Update backend
 cd backend
-NODE_ENV=production node src/server.js
-```
+npm install
 
-The backend automatically serves the built frontend from `dist/` in production mode. Access everything at http://localhost:3001.
+# Restart (auto-migration runs on startup)
+pm2 restart svt-backend
+
+# No Nginx restart needed — it serves static files
+```
 
 ### Reset Admin Password
-
-If you forget your admin password, run on the server:
 
 ```bash
 cd ~/v2/backend
 node -e "
+require('dotenv').config();
 const bcrypt = require('bcryptjs');
 bcrypt.hash('YourNewPassword', 12).then(h => {
   const { pool } = require('./src/config/database');
-  pool.query('UPDATE users SET password_hash = \$1 WHERE email = \$2', [h, 'your@email.com'])
-    .then(() => { console.log('✅ Password updated'); process.exit(0); })
+  pool.query('UPDATE users SET password_hash=\$1, active_token_hash=NULL, device_id=NULL, failed_attempts=0, is_locked=false WHERE email=\$2', [h, 'your@email.com'])
+    .then(() => pool.query('DELETE FROM login_attempts'))
+    .then(() => { console.log('✅ Password reset'); process.exit(0); })
     .catch(e => { console.error(e); process.exit(1); });
 });
 "
 ```
 
----
+### Clear Account Lockout
 
-## 🔧 Troubleshooting
-
-| Problem | Solution |
-|---------|----------|
-| `psql: command not found` | Add PostgreSQL bin to your PATH. Windows: `C:\Program Files\PostgreSQL\16\bin`. Linux: usually auto-added. |
-| `ECONNREFUSED` on PostgreSQL | PostgreSQL service isn't running. **Windows:** Open Services → PostgreSQL → Start. **Linux:** `sudo systemctl start postgresql` |
-| `password authentication failed` | Double-check `DB_PASSWORD` in `backend/.env` matches your postgres password |
-| `relation "users" does not exist` | Schema not loaded. Run: `psql -U postgres -d sri_vinayaka -f backend/database/schema.sql` |
-| `database "sri_vinayaka" does not exist` | Create it: `psql -U postgres` then `CREATE DATABASE sri_vinayaka;` |
-| Seed command fails | Make sure `.env` is configured and database schema is loaded first |
-| Frontend shows blank page | Make sure backend is running on port 3001 first, then start frontend |
-| `CORS error` in browser console | Check `FRONTEND_URL` in `backend/.env` matches exactly: `http://localhost:8080` |
-| `Cannot find module` errors | Run `npm install` in the correct folder (backend/ or project root) |
-| MongoDB backup fails | Check `MONGO_URI` in `.env`. Database should be `test` with collections: investors, loans, loginhistories, notifications, users |
-| Port already in use | Kill the process: `lsof -ti:3001 \| xargs kill` (Linux/Mac) or change `PORT` in `.env` |
-
----
-
-## File Structure Reference
-
-```
-project-root/
-├── src/                      # Frontend React source
-├── public/                   # Static assets
-├── dist/                     # Built frontend (after npm run build)
-├── vite.config.ts            # Vite config with /api proxy
-├── docs/
-│   └── API_SPEC.md           # Complete REST API reference
-├── backend/
-│   ├── .env.example          # Environment template
-│   ├── .env                  # Your local config (git-ignored)
-│   ├── package.json          # Backend dependencies
-│   ├── README.md             # Backend-specific docs
-│   ├── database/
-│   │   ├── schema.sql        # Complete PostgreSQL schema (all tables + functions)
-│   │   ├── full_migration_for_psql.sql  # Legacy full migration (reference)
-│   │   ├── migration_single_session.sql # Single session migration
-│   │   ├── migration_high_payment_alerts.sql # Alert tables migration
-│   │   └── seed.js           # Admin account seeder
-│   └── src/
-│       ├── server.js         # Express app entry point
-│       ├── config/
-│       │   ├── database.js   # PostgreSQL pool (with retry & timeout)
-│       │   ├── autoMigrate.js # Auto-migration on startup
-│       │   ├── email.js      # SMTP email config
-│       │   └── mongodb.js    # MongoDB Atlas connection
-│       ├── middleware/
-│       │   ├── auth.js       # JWT authentication
-│       │   └── auditLogger.js # Server-side mutation audit logging
-│       ├── templates/
-│       │   └── emailTemplates.js # Email HTML templates
-│       └── routes/
-│           ├── auth.js       # Login, signup, verify
-│           ├── admin.js      # Admin CRUD, password, history, restore
-│           ├── loans.js      # Loans + transactions CRUD (paginated)
-│           ├── investors.js  # Investors + payments CRUD (paginated)
-│           ├── notifications.js
-│           ├── backup.js     # MongoDB Atlas backup (with validation)
-│           └── csrf.js       # CSRF token
-└── SETUP.md                  # This file
+```bash
+cd ~/v2/backend
+node -e "
+require('dotenv').config();
+const { pool } = require('./src/config/database');
+pool.query('UPDATE users SET is_locked=false, locked_until=NULL, failed_attempts=0 WHERE email=\$1', ['user@email.com'])
+  .then(() => pool.query('DELETE FROM login_attempts'))
+  .then(() => { console.log('✅ Unlocked'); process.exit(0); })
+  .catch(e => { console.error(e); process.exit(1); });
+"
 ```
 
----
+### PM2 Commands
 
-## Quick Commands Reference
+```bash
+pm2 status                  # List processes
+pm2 logs svt-backend        # Live logs
+pm2 logs svt-backend --lines 50  # Last 50 lines
+pm2 restart svt-backend     # Restart
+pm2 stop svt-backend        # Stop
+pm2 delete svt-backend      # Remove
+pm2 monit                   # Real-time dashboard
+```
+
+### View Logs
 
 ```bash
 # Backend
-cd backend && npm run dev          # Start dev server
-cd backend && npm run db:init      # Load schema
-cd backend && npm run db:seed      # Create default admin
+pm2 logs svt-backend
 
-# Frontend
-npm run dev                        # Start dev server
-npm run build                      # Build for production
+# Nginx access
+sudo tail -f /var/log/nginx/access.log
 
-# Database
-psql -U postgres -d sri_vinayaka   # Connect to database
-psql -U postgres -d sri_vinayaka -f backend/database/schema.sql  # Load schema
+# Nginx errors
+sudo tail -f /var/log/nginx/error.log
+
+# PostgreSQL (Amazon Linux)
+sudo tail -f /var/lib/pgsql/data/log/*.log
+
+# PostgreSQL (Ubuntu)
+sudo tail -f /var/log/postgresql/postgresql-*-main.log
+```
+
+### Add SSL with Let's Encrypt (Requires Domain)
+
+```bash
+# Amazon Linux
+sudo dnf install -y certbot python3-certbot-nginx
+
+# Ubuntu
+sudo apt install -y certbot python3-certbot-nginx
+
+# Get certificate
+sudo certbot --nginx -d yourdomain.com -d www.yourdomain.com
+
+# Test auto-renewal
+sudo certbot renew --dry-run
+```
+
+After SSL, update `backend/.env`:
+```env
+FRONTEND_URL=https://yourdomain.com
+CORS_ORIGIN=https://yourdomain.com
+BASE_URL=https://yourdomain.com
+```
+
+Then restart:
+```bash
+pm2 restart svt-backend
+```
+
+### Import Existing Data (Backup Restore)
+
+1. Login to the app
+2. Go to **Settings** (gear icon)
+3. Click **Restore from File**
+4. Select your `.json` backup file
+
+Or via API:
+```bash
+# Get token
+TOKEN=$(curl -s -X POST http://localhost:3001/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"admin@example.com","password":"password123"}' | grep -o '"token":"[^"]*' | cut -d'"' -f4)
+
+# Restore
+curl -X POST http://localhost:3001/api/admin/restore \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d @backup-file.json
+```
+
+---
+
+## Troubleshooting
+
+| Problem | Solution |
+|---------|----------|
+| `502 Bad Gateway` | Backend not running → `pm2 restart svt-backend && pm2 logs` |
+| `Connection refused` | Check Security Group ports (80, 443 open?) |
+| `ECONNREFUSED` PostgreSQL | Service not running → `sudo systemctl start postgresql` |
+| `password authentication failed` | Check `DB_PASSWORD` in `.env` or update `pg_hba.conf` to use `md5` |
+| `relation "users" does not exist` | Run `node database/seed.js` — auto-migration creates tables on startup |
+| `CORS error` in browser | `CORS_ORIGIN` in `.env` must match your access URL exactly |
+| `SyntaxError: Identifier already declared` | Duplicate import in a route file — check with `grep -n 'require' src/routes/admin.js` |
+| Reset link shows `localhost` | Set `FRONTEND_URL` in `.env` to your public IP/domain |
+| Permission denied | `sudo chown -R ec2-user:ec2-user ~/v2` (or `ubuntu:ubuntu` on Ubuntu) |
+| PM2 not starting on reboot | Run `pm2 startup` and execute the printed command, then `pm2 save` |
+| Frontend shows blank page | Rebuild: `cd ~/v2 && npm run build` |
+| `express-validator` missing | `cd ~/v2/backend && npm install` (it's in package.json) |
+
+---
+
+## File Structure
+
+```
+~/v2/
+├── src/                          # Frontend React source
+├── public/                       # Static assets
+├── dist/                         # Built frontend (npm run build)
+├── vite.config.ts                # Vite config (/api proxy for dev)
+├── SETUP.md                      # This file
+├── docs/
+│   ├── API_SPEC.md               # REST API reference
+│   └── investor.md               # Investor module docs
+└── backend/
+    ├── .env.example              # Environment template
+    ├── .env                      # Your config (git-ignored)
+    ├── package.json              # Backend dependencies
+    ├── database/
+    │   ├── schema.sql            # Complete PostgreSQL schema
+    │   └── seed.js               # Admin account seeder
+    └── src/
+        ├── server.js             # Express entry point
+        ├── config/
+        │   ├── database.js       # PostgreSQL pool
+        │   ├── autoMigrate.js    # Auto-migration on startup
+        │   ├── email.js          # SMTP config
+        │   └── mongodb.js        # MongoDB Atlas connection
+        ├── middleware/
+        │   ├── auth.js           # JWT authentication
+        │   └── auditLogger.js    # Mutation audit logging
+        ├── templates/
+        │   └── emailTemplates.js # Email HTML templates
+        └── routes/
+            ├── auth.js           # Login, password reset
+            ├── admin.js          # Admin CRUD, restore
+            ├── loans.js          # Loans + transactions
+            ├── investors.js      # Investors + payments
+            ├── notifications.js  # Notifications
+            ├── backup.js         # MongoDB backup
+            └── csrf.js           # CSRF token
+```
+
+---
+
+## Quick Reference
+
+```bash
+# === Local Development ===
+cd backend && npm run dev              # Start backend (dev)
+npm run dev                            # Start frontend (dev, from root)
+
+# === Production ===
+cd ~/v2 && npm run build               # Build frontend
+cd ~/v2/backend && npm install         # Install backend deps
+pm2 restart svt-backend                # Restart backend
+pm2 logs svt-backend                   # View logs
+
+# === Database ===
+cd ~/v2/backend && node database/seed.js   # Seed admin
+psql -U svtuser -d sri_vinayaka            # Connect to DB
+
+# === Generate Secrets ===
+openssl rand -hex 32                   # 64-char random string
 ```
