@@ -6,8 +6,6 @@ const { authenticate } = require('../middleware/auth');
 const { sendEmail } = require('../config/email');
 const { adminPasswordResetTemplate } = require('../templates/emailTemplates');
 const { body, param, validationResult } = require('express-validator');
-const { sendEmail } = require('../config/email');
-const { adminPasswordResetTemplate } = require('../templates/emailTemplates');
 
 const router = express.Router();
 
