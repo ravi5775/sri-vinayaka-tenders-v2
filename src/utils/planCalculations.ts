@@ -98,7 +98,14 @@ const getInterestRateCalculationDetails = (loan: Loan) => {
   let runningPrincipal = loan.loanAmount;
 
   while (periodStart < today) {
-    // Apply principal payments that fall within this period
+    if (periodEnd <= today) {
+      // Full period elapsed — calculate interest FIRST on current principal
+      const interestForPeriod = runningPrincipal * (ratePerPeriod / 100);
+      totalInterestAccrued += interestForPeriod;
+      periodsElapsed++;
+    }
+
+    // Apply principal payments AFTER interest calc — affects next period onward
     for (const pp of sortedPrincipalPayments) {
       const ppDate = new Date(pp.payment_date);
       ppDate.setHours(0, 0, 0, 0);
@@ -106,14 +113,6 @@ const getInterestRateCalculationDetails = (loan: Loan) => {
         runningPrincipal = Math.max(0, runningPrincipal - pp.amount);
       }
     }
-
-    if (periodEnd <= today) {
-      // Full period elapsed — apply prorated monthly rate
-      const interestForPeriod = runningPrincipal * (ratePerPeriod / 100);
-      totalInterestAccrued += interestForPeriod;
-      periodsElapsed++;
-    }
-    // Partial period in progress — no interest charged until period completes
 
     periodStart = periodEnd;
     periodEnd = addOnePeriod(periodStart);
