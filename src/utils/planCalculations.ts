@@ -124,7 +124,7 @@ const getInterestRateCalculationDetails = (loan: Loan) => {
   const finalRemainingPrincipal = Math.max(0, loan.loanAmount - totalPrincipalPaid);
   const balance = finalRemainingPrincipal + pendingInterest;
 
-  if (balance < 0.01) return { balance: 0, pendingInterest: 0, remainingPrincipal: 0, periodsElapsed, nextDueDate: null, status: 'Completed' as const };
+  if (balance < 0.01) return { balance: 0, pendingInterest: 0, totalInterestAccrued, remainingPrincipal: 0, periodsElapsed, nextDueDate: null, status: 'Completed' as const };
 
   // Next due date = start of next period after today
   let nextDueDate = new Date(startDate);
@@ -133,7 +133,7 @@ const getInterestRateCalculationDetails = (loan: Loan) => {
   const hasOverdueInterest = pendingInterest > 0;
   const status = hasOverdueInterest ? ('Overdue' as const) : ('Active' as const);
 
-  return { balance, pendingInterest, remainingPrincipal: finalRemainingPrincipal, periodsElapsed, nextDueDate, status };
+  return { balance, pendingInterest, totalInterestAccrued, remainingPrincipal: finalRemainingPrincipal, periodsElapsed, nextDueDate, status };
 };
 
 /**
@@ -195,8 +195,8 @@ export const calculateLoanProfit = (loan: Loan): number => {
     case 'Finance': return calculateTotalAmount(loan) - (loan.givenAmount || 0);
     case 'Tender': return loan.loanAmount - loan.givenAmount;
     case 'InterestRate': {
-      const totalLiability = calculateTotalAmount(loan);
-      return Math.max(0, totalLiability - (loan.givenAmount || loan.loanAmount));
+      // Profit = total interest accrued so far (accumulated profit)
+      return getInterestRateCalculationDetails(loan).totalInterestAccrued;
     }
     default: return 0;
   }
@@ -204,7 +204,8 @@ export const calculateLoanProfit = (loan: Loan): number => {
 
 export const calculateInterestAmount = (loan: Loan): number => {
   if (loan.loanType !== 'InterestRate') return 0;
-  return getInterestRateCalculationDetails(loan).pendingInterest;
+  // Show per-period interest based on current remaining principal (what's due next)
+  return getInterestPerPeriod(loan);
 };
 
 export const calculateNextDueDate = (loan: Loan): Date | null => {
