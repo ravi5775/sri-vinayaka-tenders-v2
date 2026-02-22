@@ -29,6 +29,7 @@ const LoanForm: React.FC = () => {
   const [durationValue, setDurationValue] = useState<number | null>(12);
   const [durationUnit, setDurationUnit] = useState<DurationUnit | null>('Months');
   const [formError, setFormError] = useState<string>('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     if (isEditing && loanToEdit) {
@@ -87,11 +88,13 @@ const LoanForm: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
     if (!validateForm()) return;
     if (!loanType) {
       showToast('Please select a loan type.', 'error');
       return;
     }
+    setIsSubmitting(true);
 
     let finalGivenAmount = givenAmount;
     if ((loanType === 'Finance' || loanType === 'InterestRate') && (!givenAmount || givenAmount <= 0)) {
@@ -119,6 +122,8 @@ const LoanForm: React.FC = () => {
     } catch (error) {
       console.error(error);
       showToast(t('Failed to save loan.'), 'error');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -258,8 +263,8 @@ const LoanForm: React.FC = () => {
 
         {loanType && (
           <div className="pt-6 border-t border-border/50">
-            <button type="submit" className="btn btn-primary w-full sm:w-auto text-base px-8 py-3">
-              {isEditing ? t('Update Loan') : t('Save Loan')}
+            <button type="submit" disabled={isSubmitting} className="btn btn-primary w-full sm:w-auto text-base px-8 py-3 disabled:opacity-50 disabled:cursor-not-allowed">
+              {isSubmitting ? t('Saving...') : isEditing ? t('Update Loan') : t('Save Loan')}
             </button>
           </div>
         )}

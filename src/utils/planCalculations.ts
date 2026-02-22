@@ -213,8 +213,9 @@ export const calculateLoanProfit = (loan: Loan): number => {
     case 'Finance': return calculateTotalAmount(loan) - (loan.givenAmount || 0);
     case 'Tender': return loan.loanAmount - loan.givenAmount;
     case 'InterestRate': {
-      // Profit = total interest accrued so far (accumulated profit)
-      return getCachedInterestDetails(loan).totalInterestAccrued;
+      // Profit = difference between principal amount and distributed amount
+      const effectiveGiven = loan.givenAmount || loan.loanAmount;
+      return loan.loanAmount - effectiveGiven;
     }
     default: return 0;
   }
