@@ -165,7 +165,7 @@ CREATE INDEX IF NOT EXISTS idx_login_history_created_at ON login_history(created
 CREATE TABLE IF NOT EXISTS notifications (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  loan_id UUID REFERENCES loans(id) ON DELETE SET NULL,
+  loan_id UUID REFERENCES loans(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
   message TEXT NOT NULL,
   is_read BOOLEAN NOT NULL DEFAULT false,
@@ -174,6 +174,8 @@ CREATE TABLE IF NOT EXISTS notifications (
 
 CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_is_read ON notifications(user_id, is_read);
+CREATE INDEX IF NOT EXISTS idx_loans_created_at ON loans(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_loans_customer_name ON loans(customer_name);
 
 -- ============================================================
 -- AUDIT LOGS TABLE

@@ -139,7 +139,7 @@ async function autoMigrate() {
       CREATE TABLE IF NOT EXISTS notifications (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        loan_id UUID REFERENCES loans(id) ON DELETE SET NULL,
+        loan_id UUID REFERENCES loans(id) ON DELETE CASCADE,
         title TEXT NOT NULL,
         message TEXT NOT NULL,
         is_read BOOLEAN NOT NULL DEFAULT false,
@@ -147,6 +147,8 @@ async function autoMigrate() {
       );
       CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id);
       CREATE INDEX IF NOT EXISTS idx_notifications_is_read ON notifications(user_id, is_read);
+      CREATE INDEX IF NOT EXISTS idx_loans_created_at ON loans(created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_loans_customer_name ON loans(customer_name);
 
       -- AUDIT LOGS
       CREATE TABLE IF NOT EXISTS audit_logs (
@@ -199,6 +201,21 @@ async function autoMigrate() {
       CREATE INDEX IF NOT EXISTS idx_high_payment_alert_log_txn ON high_payment_alert_log(transaction_id);
       CREATE INDEX IF NOT EXISTS idx_high_payment_alert_log_loan ON high_payment_alert_log(loan_id);
       CREATE INDEX IF NOT EXISTS idx_high_payment_alert_log_sent ON high_payment_alert_log(sent_at DESC);
+    `);
+
+    // Fix existing notifications FK constraint (existing DB may have ON DELETE SET NULL or no action)
+    await client.query(`
+      DO $$ BEGIN
+        IF EXISTS (
+          SELECT 1 FROM information_schema.table_constraints
+          WHERE constraint_name = 'notifications_loan_id_fkey'
+          AND table_name = 'notifications'
+        ) THEN
+          ALTER TABLE notifications DROP CONSTRAINT notifications_loan_id_fkey;
+          ALTER TABLE notifications ADD CONSTRAINT notifications_loan_id_fkey
+            FOREIGN KEY (loan_id) REFERENCES loans(id) ON DELETE CASCADE;
+        END IF;
+      END $$;
     `);
 
     // Triggers
