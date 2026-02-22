@@ -134,7 +134,13 @@ const LoanForm: React.FC = () => {
   }, [totalFinanceAmount, givenAmount, loanAmount]);
 
   const totalTenderProfit = useMemo(() => (loanAmount || 0) - (givenAmount || 0), [loanAmount, givenAmount]);
-  const firstMonthInterest = useMemo(() => ((loanAmount || 0) * (interestRate || 0) / 100), [loanAmount, interestRate]);
+  const interestPerPeriod = useMemo(() => {
+    const monthlyInterest = (loanAmount || 0) * ((interestRate || 0) / 100);
+    const unit = durationUnit || 'Months';
+    if (unit === 'Weeks') return monthlyInterest / 4;
+    if (unit === 'Days') return monthlyInterest / 30;
+    return monthlyInterest;
+  }, [loanAmount, interestRate, durationUnit]);
 
   const inputFieldClass = "w-full px-4 py-2.5 border border-input rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary bg-background transition-all duration-200 text-sm";
   const selectFieldClass = `${inputFieldClass} bg-background`;
@@ -233,8 +239,10 @@ const LoanForm: React.FC = () => {
               </div>
             </div>
             <div className="p-4 bg-gradient-to-br from-primary/5 to-accent/5 rounded-xl text-center mt-4 border border-primary/10">
-              <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">{t("First Month's Interest")}</p>
-              <p className="text-xl font-bold text-primary mt-1">₹{firstMonthInterest.toLocaleString('en-IN')}</p>
+              <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">
+                {durationUnit === 'Days' ? t("Interest per Day") : durationUnit === 'Weeks' ? t("Interest per Week") : t("First Month's Interest")}
+              </p>
+              <p className="text-xl font-bold text-primary mt-1">₹{interestPerPeriod.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</p>
               <p className="text-xs text-muted-foreground mt-2">{t("Total amount due will change based on payments.")}</p>
             </div>
           </div>
