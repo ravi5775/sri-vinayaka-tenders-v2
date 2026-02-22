@@ -111,28 +111,40 @@ const getInterestRateCalculationDetails = (loan: Loan) => {
   let periodsElapsed = 0;
   let totalInterestAccrued = 0;
 
-  // Walk period by period and accumulate interest on the principal at that time
+  // Walk period by period and accumulate interest on the principal at that time.
+  // RULE: totalInterestAccrued is ONLY modified by addition (+=), NEVER reset.
+  // RULE: principal payments ONLY modify runningPrincipal, nothing else.
   let periodStart = new Date(startDate);
   let periodEnd = addOnePeriod(periodStart);
   let runningPrincipal = loan.loanAmount;
 
+  // Track which principal payments have been applied (by index) to prevent
+  // double-application across period boundaries due to timezone edge cases.
+  const appliedPrincipalPayments = new Set<number>();
+
   while (periodStart < today) {
-    // Apply principal payments BEFORE interest calc — reduces principal for this period
-    for (const pp of sortedPrincipalPayments) {
+    // Step 1: Apply principal payments that fall in this period.
+    // This ONLY touches runningPrincipal — never totalInterestAccrued.
+    for (let i = 0; i < sortedPrincipalPayments.length; i++) {
+      if (appliedPrincipalPayments.has(i)) continue;
+      const pp = sortedPrincipalPayments[i];
       const ppDate = new Date(pp.payment_date);
       ppDate.setHours(0, 0, 0, 0);
       if (ppDate >= periodStart && ppDate < periodEnd && ppDate <= today) {
         runningPrincipal = Math.max(0, runningPrincipal - pp.amount);
+        appliedPrincipalPayments.add(i);
       }
     }
 
+    // Step 2: Calculate interest for this period (only if fully elapsed).
+    // Interest is ADDED to totalInterestAccrued — never assigned/reset.
     if (periodEnd <= today) {
-      // Full period elapsed — calculate interest on current (post-payment) principal
       const interestForPeriod = runningPrincipal * (ratePerPeriod / 100);
       totalInterestAccrued += interestForPeriod;
       periodsElapsed++;
     }
 
+    // Step 3: Advance to next period.
     periodStart = periodEnd;
     periodEnd = addOnePeriod(periodStart);
   }
