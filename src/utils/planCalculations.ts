@@ -313,8 +313,8 @@ export const calculateLoanProfit = (loan: Loan): number => {
 
 export const calculateInterestAmount = (loan: Loan): number => {
   if (loan.loanType !== 'InterestRate') return 0;
-  // Show per-period interest based on current remaining principal (what's due next)
-  return getInterestPerPeriod(loan);
+  // Show total pending interest (accrued minus paid) — matches repayment tab
+  return getPendingInterest(loan);
 };
 
 export const calculateNextDueDate = (loan: Loan): Date | null => {
