@@ -167,6 +167,84 @@ const getInterestRateCalculationDetails = (loan: Loan) => {
 };
 
 /**
+ * Returns a period-by-period breakdown of how interest was calculated.
+ * Useful for showing users WHY the pending interest is a specific value.
+ */
+export const getInterestBreakdown = (loan: Loan): { period: number; principalAtStart: number; principalPaymentsInPeriod: number; principalAfterPayments: number; interest: number; periodStart: Date; periodEnd: Date }[] => {
+  if (loan.loanType !== 'InterestRate') return [];
+
+  const transactions = loan.transactions
+    ? [...loan.transactions].sort((a, b) => new Date(a.payment_date).getTime() - new Date(b.payment_date).getTime())
+    : [];
+
+  const monthlyRate = loan.interestRate || 0;
+  const durationUnit = loan.durationUnit || 'Months';
+  const periodsPerMonth = PERIODS_PER_MONTH[durationUnit] ?? 1;
+  const ratePerPeriod = monthlyRate / periodsPerMonth;
+
+  const startDate = new Date(loan.startDate);
+  startDate.setHours(0, 0, 0, 0);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const principalPayments = transactions.filter(tx => tx.payment_type === 'principal');
+  const sortedPP = [...principalPayments].sort((a, b) => new Date(a.payment_date).getTime() - new Date(b.payment_date).getTime());
+
+  const addOnePeriod = (date: Date): Date => {
+    const d = new Date(date);
+    switch (durationUnit) {
+      case 'Days': d.setDate(d.getDate() + 1); break;
+      case 'Weeks': d.setDate(d.getDate() + 7); break;
+      case 'Months':
+      default: d.setMonth(d.getMonth() + 1); break;
+    }
+    return d;
+  };
+
+  const breakdown: { period: number; principalAtStart: number; principalPaymentsInPeriod: number; principalAfterPayments: number; interest: number; periodStart: Date; periodEnd: Date }[] = [];
+  let periodStart = new Date(startDate);
+  let periodEnd = addOnePeriod(periodStart);
+  let runningPrincipal = loan.loanAmount;
+  const applied = new Set<number>();
+  let periodNum = 0;
+
+  while (periodStart < today) {
+    const principalAtStart = runningPrincipal;
+    let ppInPeriod = 0;
+
+    for (let i = 0; i < sortedPP.length; i++) {
+      if (applied.has(i)) continue;
+      const ppDate = new Date(sortedPP[i].payment_date);
+      ppDate.setHours(0, 0, 0, 0);
+      if (ppDate >= periodStart && ppDate < periodEnd && ppDate <= today) {
+        ppInPeriod += sortedPP[i].amount;
+        runningPrincipal = Math.max(0, runningPrincipal - sortedPP[i].amount);
+        applied.add(i);
+      }
+    }
+
+    if (periodEnd <= today) {
+      periodNum++;
+      const interest = runningPrincipal * (ratePerPeriod / 100);
+      breakdown.push({
+        period: periodNum,
+        principalAtStart,
+        principalPaymentsInPeriod: ppInPeriod,
+        principalAfterPayments: runningPrincipal,
+        interest,
+        periodStart: new Date(periodStart),
+        periodEnd: new Date(periodEnd),
+      });
+    }
+
+    periodStart = periodEnd;
+    periodEnd = addOnePeriod(periodStart);
+  }
+
+  return breakdown;
+};
+
+/**
  * Returns the interest amount per collection period for an InterestRate loan.
  * Rate is always monthly; prorated by duration unit.
  *   Monthly → rate/100
