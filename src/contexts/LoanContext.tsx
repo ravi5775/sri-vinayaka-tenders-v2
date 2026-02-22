@@ -12,7 +12,6 @@ interface LoanContextType {
   deleteMultipleLoans: (loanIds: string[]) => Promise<void>;
   getLoanById: (id: string) => Loan | undefined;
   addTransaction: (loanId: string, transaction: Omit<Transaction, 'id' | 'loan_id' | 'user_id' | 'created_at'>) => Promise<void>;
-
   updateTransaction: (loanId: string, transaction: Transaction) => Promise<void>;
   deleteTransaction: (loanId: string, transactionId: string) => Promise<void>;
   refreshLoans: () => Promise<void>;
@@ -43,8 +42,8 @@ export const LoanProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   useEffect(() => {
     if (user) {
       fetchLoans();
-      // Auto-refresh every 30 seconds
-      const interval = setInterval(() => fetchLoans(true), 30000);
+      // Auto-refresh every 2 minutes (reduced from 30s to cut server load)
+      const interval = setInterval(() => fetchLoans(true), 120000);
       return () => clearInterval(interval);
     } else {
       setLoans([]);
@@ -56,7 +55,8 @@ export const LoanProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     if (!user) return;
     try {
       const newLoan = await apiService.createLoan(loanData);
-      await fetchLoans(true);
+      // Optimistic: append the new loan locally instead of re-fetching all
+      setLoans(prev => [{ ...newLoan, transactions: newLoan.transactions || [] }, ...prev]);
       showToast('Loan created successfully!', 'success');
     } catch (error: any) {
       showToast(error.message, 'error');
@@ -66,8 +66,12 @@ export const LoanProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const updateLoan = async (loanData: Loan) => {
     try {
-      await apiService.updateLoan(loanData.id, loanData);
-      await fetchLoans(true);
+      const updatedLoan = await apiService.updateLoan(loanData.id, loanData);
+      // Optimistic: replace the loan in local state
+      setLoans(prev => prev.map(l => l.id === loanData.id
+        ? { ...updatedLoan, transactions: l.transactions }
+        : l
+      ));
       showToast('Loan updated successfully!', 'success');
     } catch (error: any) {
       showToast(error.message, 'error');
@@ -77,10 +81,14 @@ export const LoanProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const deleteMultipleLoans = async (loanIds: string[]) => {
     try {
+      // Optimistic: remove loans from local state immediately
+      const idsSet = new Set(loanIds);
+      setLoans(prev => prev.filter(l => !idsSet.has(l.id)));
       await apiService.deleteLoans(loanIds);
-      await fetchLoans(true);
       showToast('Loan(s) deleted successfully!', 'success');
     } catch (error: any) {
+      // Rollback on failure — re-fetch
+      await fetchLoans(true);
       showToast(error.message, 'error');
       throw error;
     }
@@ -92,7 +100,22 @@ export const LoanProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     if (!user) return;
     try {
       await apiService.addTransaction(loanId, transaction);
-      await fetchLoans(true);
+      // After successful server write, update locally with a temp ID
+      // then do a background refetch to get the real server state
+      const tempTxn: Transaction = {
+        id: crypto.randomUUID(),
+        loan_id: loanId,
+        user_id: user.id,
+        amount: transaction.amount,
+        payment_date: transaction.payment_date,
+        payment_type: transaction.payment_type,
+      };
+      setLoans(prev => prev.map(l => {
+        if (l.id !== loanId) return l;
+        return { ...l, transactions: [tempTxn, ...(l.transactions || [])] };
+      }));
+      // Background sync to get real transaction ID
+      fetchLoans(true);
     } catch (error: any) {
       showToast(error.message, 'error');
       throw error;
@@ -105,7 +128,16 @@ export const LoanProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         amount: updatedTxn.amount,
         payment_date: updatedTxn.payment_date,
       });
-      await fetchLoans(true);
+      // Optimistic: update transaction locally
+      setLoans(prev => prev.map(l => {
+        if (l.id !== loanId) return l;
+        return {
+          ...l,
+          transactions: (l.transactions || []).map(t =>
+            t.id === updatedTxn.id ? { ...t, amount: updatedTxn.amount, payment_date: updatedTxn.payment_date } : t
+          ),
+        };
+      }));
     } catch (error: any) {
       showToast(error.message, 'error');
       throw error;
@@ -115,7 +147,11 @@ export const LoanProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const deleteTransaction = async (loanId: string, transactionId: string) => {
     try {
       await apiService.deleteTransaction(loanId, transactionId);
-      await fetchLoans(true);
+      // Optimistic: remove transaction locally
+      setLoans(prev => prev.map(l => {
+        if (l.id !== loanId) return l;
+        return { ...l, transactions: (l.transactions || []).filter(t => t.id !== transactionId) };
+      }));
     } catch (error: any) {
       showToast(error.message, 'error');
       throw error;
