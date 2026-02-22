@@ -41,15 +41,36 @@ const mapTransaction = (row) => ({
   created_at: row.created_at,
 });
 
-// GET /api/loans
+// GET /api/loans — supports optional pagination via ?page=1&limit=50
 router.get('/', async (req, res) => {
   try {
-    const loansResult = await pool.query(
-      'SELECT * FROM loans ORDER BY created_at DESC'
-    );
-    const txnResult = await pool.query(
-      'SELECT * FROM transactions ORDER BY payment_date DESC'
-    );
+    const page = Math.max(1, parseInt(req.query.page) || 0);
+    const limit = Math.min(500, Math.max(1, parseInt(req.query.limit) || 0));
+    const usePagination = req.query.page || req.query.limit;
+
+    let loansResult;
+    if (usePagination) {
+      const offset = (page - 1) * limit;
+      loansResult = await pool.query(
+        'SELECT * FROM loans ORDER BY created_at DESC LIMIT $1 OFFSET $2',
+        [limit, offset]
+      );
+    } else {
+      // Backward-compatible: return all loans if no pagination params
+      loansResult = await pool.query('SELECT * FROM loans ORDER BY created_at DESC');
+    }
+
+    // Fetch transactions only for the returned loans
+    const loanIds = loansResult.rows.map(r => r.id);
+    let txnResult;
+    if (loanIds.length > 0) {
+      txnResult = await pool.query(
+        'SELECT * FROM transactions WHERE loan_id = ANY($1::uuid[]) ORDER BY payment_date DESC',
+        [loanIds]
+      );
+    } else {
+      txnResult = { rows: [] };
+    }
 
     const txnMap = {};
     txnResult.rows.forEach(t => {
@@ -58,7 +79,14 @@ router.get('/', async (req, res) => {
     });
 
     const loans = loansResult.rows.map(row => mapLoan(row, txnMap[row.id] || []));
-    res.json(loans);
+
+    if (usePagination) {
+      const countResult = await pool.query('SELECT COUNT(*) FROM loans');
+      const total = parseInt(countResult.rows[0].count);
+      res.json({ loans, total, page, limit, totalPages: Math.ceil(total / limit) });
+    } else {
+      res.json(loans);
+    }
   } catch (err) {
     console.error('Get loans error:', err);
     res.status(500).json({ error: 'Internal server error' });

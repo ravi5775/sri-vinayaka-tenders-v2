@@ -32,11 +32,35 @@ const mapPayment = (row) => ({
   created_at: row.created_at,
 });
 
-// GET /api/investors
+// GET /api/investors — supports optional pagination via ?page=1&limit=50
 router.get('/', async (req, res) => {
   try {
-    const invResult = await pool.query('SELECT * FROM investors ORDER BY created_at DESC');
-    const payResult = await pool.query('SELECT * FROM investor_payments ORDER BY payment_date DESC');
+    const page = Math.max(1, parseInt(req.query.page) || 0);
+    const limit = Math.min(500, Math.max(1, parseInt(req.query.limit) || 0));
+    const usePagination = req.query.page || req.query.limit;
+
+    let invResult;
+    if (usePagination) {
+      const offset = (page - 1) * limit;
+      invResult = await pool.query(
+        'SELECT * FROM investors ORDER BY created_at DESC LIMIT $1 OFFSET $2',
+        [limit, offset]
+      );
+    } else {
+      invResult = await pool.query('SELECT * FROM investors ORDER BY created_at DESC');
+    }
+
+    // Fetch payments only for returned investors
+    const invIds = invResult.rows.map(r => r.id);
+    let payResult;
+    if (invIds.length > 0) {
+      payResult = await pool.query(
+        'SELECT * FROM investor_payments WHERE investor_id = ANY($1::uuid[]) ORDER BY payment_date DESC',
+        [invIds]
+      );
+    } else {
+      payResult = { rows: [] };
+    }
 
     const payMap = {};
     payResult.rows.forEach(p => {
@@ -45,7 +69,14 @@ router.get('/', async (req, res) => {
     });
 
     const investors = invResult.rows.map(row => mapInvestor(row, payMap[row.id] || []));
-    res.json(investors);
+
+    if (usePagination) {
+      const countResult = await pool.query('SELECT COUNT(*) FROM investors');
+      const total = parseInt(countResult.rows[0].count);
+      res.json({ investors, total, page, limit, totalPages: Math.ceil(total / limit) });
+    } else {
+      res.json(investors);
+    }
   } catch (err) {
     console.error('Get investors error:', err);
     res.status(500).json({ error: 'Internal server error' });
