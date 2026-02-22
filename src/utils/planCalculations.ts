@@ -5,6 +5,25 @@ export const calculateAmountPaid = (transactions: Transaction[]): number => {
   return transactions.reduce((sum, txn) => sum + txn.amount, 0);
 };
 
+// ── Per-loan cache to avoid redundant heavy calculations ──
+const interestCache = new WeakMap<Loan, { result: ReturnType<typeof getInterestRateCalculationDetails>; hash: string }>();
+
+const getLoanHash = (loan: Loan): string => {
+  const txnHash = loan.transactions
+    ? loan.transactions.map(t => `${t.id}:${t.amount}:${t.payment_date}:${t.payment_type}`).join('|')
+    : '';
+  return `${loan.id}:${loan.loanAmount}:${loan.interestRate}:${loan.startDate}:${loan.durationUnit}:${loan.durationValue}:${txnHash}`;
+};
+
+const getCachedInterestDetails = (loan: Loan) => {
+  const hash = getLoanHash(loan);
+  const cached = interestCache.get(loan);
+  if (cached && cached.hash === hash) return cached.result;
+  const result = getInterestRateCalculationDetails(loan);
+  interestCache.set(loan, { result, hash });
+  return result;
+};
+
 export const calculateFinalDueDate = (loan: Loan): Date | null => {
   const startDate = new Date(loan.startDate);
   if (isNaN(startDate.getTime())) return null;
@@ -154,12 +173,12 @@ export const getInterestPerPeriod = (loan: Loan): number => {
 
 export const getPendingInterest = (loan: Loan): number => {
   if (loan.loanType !== 'InterestRate') return 0;
-  return getInterestRateCalculationDetails(loan).pendingInterest;
+  return getCachedInterestDetails(loan).pendingInterest;
 };
 
 export const getRemainingPrincipal = (loan: Loan): number => {
   if (loan.loanType !== 'InterestRate') return loan.loanAmount;
-  return getInterestRateCalculationDetails(loan).remainingPrincipal;
+  return getCachedInterestDetails(loan).remainingPrincipal;
 };
 
 export const calculateTotalAmount = (loan: Loan): number => {
@@ -171,7 +190,7 @@ export const calculateTotalAmount = (loan: Loan): number => {
     }
     case 'Tender': return loan.loanAmount;
     case 'InterestRate': {
-      const { balance } = getInterestRateCalculationDetails(loan);
+      const { balance } = getCachedInterestDetails(loan);
       const amountPaid = calculateAmountPaid(loan.transactions);
       return balance + amountPaid;
     }
@@ -182,7 +201,7 @@ export const calculateTotalAmount = (loan: Loan): number => {
 export const calculateBalance = (loan: Loan): number => {
   if (loan.loanType === 'InterestRate') {
     // Balance = remaining principal only (interest is shown separately)
-    return getInterestRateCalculationDetails(loan).remainingPrincipal;
+    return getCachedInterestDetails(loan).remainingPrincipal;
   }
   const totalAmount = calculateTotalAmount(loan);
   const amountPaid = calculateAmountPaid(loan.transactions);
@@ -195,7 +214,7 @@ export const calculateLoanProfit = (loan: Loan): number => {
     case 'Tender': return loan.loanAmount - loan.givenAmount;
     case 'InterestRate': {
       // Profit = total interest accrued so far (accumulated profit)
-      return getInterestRateCalculationDetails(loan).totalInterestAccrued;
+      return getCachedInterestDetails(loan).totalInterestAccrued;
     }
     default: return 0;
   }
@@ -209,7 +228,7 @@ export const calculateInterestAmount = (loan: Loan): number => {
 
 export const calculateNextDueDate = (loan: Loan): Date | null => {
   if (calculateBalance(loan) <= 0) return null;
-  if (loan.loanType === 'InterestRate') return getInterestRateCalculationDetails(loan).nextDueDate;
+  if (loan.loanType === 'InterestRate') return getCachedInterestDetails(loan).nextDueDate;
   return calculateFinalDueDate(loan);
 };
 
@@ -223,7 +242,7 @@ export const getLoanStatus = (loan: Loan): 'Active' | 'Completed' | 'Overdue' =>
     if (finalDueDate < today) return 'Overdue';
   }
   if (loan.loanType === 'InterestRate') {
-    const { status: interestStatus } = getInterestRateCalculationDetails(loan);
+    const { status: interestStatus } = getCachedInterestDetails(loan);
     if (interestStatus === 'Overdue') return 'Overdue';
   }
   return 'Active';
