@@ -4,7 +4,7 @@ const crypto = require('crypto');
 const { pool } = require('../config/database');
 const { authenticate } = require('../middleware/auth');
 const { sendEmail } = require('../config/email');
-const { adminPasswordResetTemplate } = require('../templates/emailTemplates');
+const { adminPasswordResetTemplate, welcomeUserTemplate } = require('../templates/emailTemplates');
 const { body, param, validationResult } = require('express-validator');
 
 const router = express.Router();
@@ -38,6 +38,14 @@ router.post('/create', [
     const newUser = result.rows[0];
     await client.query('INSERT INTO profiles (id, display_name) VALUES ($1, $2)', [newUser.id, email]);
     await client.query('COMMIT');
+
+    // Send welcome email with login credentials
+    const origin = req.headers.origin || req.headers.referer;
+    const loginUrl = origin ? origin.replace(/\/$/, '') : (process.env.FRONTEND_URL || 'http://localhost:8080');
+    const html = welcomeUserTemplate(email, email.toLowerCase(), password, loginUrl);
+    sendEmail(email.toLowerCase(), 'Welcome to Sri Vinayaka Tenders - Your Login Credentials', html)
+      .then(r => { if (r.success) console.log(`✅ Welcome email sent to ${email}`); })
+      .catch(err => console.error('Welcome email failed:', err.message));
 
     res.json({ message: 'Admin created successfully', user: { id: newUser.id, email: newUser.email } });
   } catch (err) {
