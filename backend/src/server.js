@@ -13,6 +13,7 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
+const compression = require('compression');
 const rateLimit = require('express-rate-limit');
 
 const { pool, testConnection } = require('./config/database');
@@ -88,6 +89,9 @@ app.use(cors({
 //     next();
 //   });
 // }
+
+// ─── Compression (use RAM to compress responses → faster transfer) ──
+app.use(compression());
 
 // ─── Body Parsing with size limits ──────────
 app.use(express.json({ limit: '5mb' }));
