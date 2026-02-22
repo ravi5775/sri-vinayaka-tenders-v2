@@ -197,54 +197,60 @@ router.post('/forgot-password', [
 
 // POST /api/auth/reset-password
 router.post('/reset-password', async (req, res) => {
+  const client = await pool.connect();
   try {
     const { token, newPassword } = req.body;
     if (!token || !newPassword || newPassword.length < 6) {
       return res.status(400).json({ error: 'Token and new password (min 6 chars) are required' });
     }
 
-    // Validate password strength
     if (newPassword.length > 128) {
       return res.status(400).json({ error: 'Password is too long' });
     }
 
     const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
 
-    const tokenResult = await pool.query(
-      'SELECT id, user_id, expires_at, used FROM password_reset_tokens WHERE token_hash = $1',
+    await client.query('BEGIN');
+
+    // Atomically claim the token: SELECT ... FOR UPDATE prevents race conditions,
+    // and we only select tokens that are NOT yet used.
+    const tokenResult = await client.query(
+      'SELECT id, user_id, expires_at FROM password_reset_tokens WHERE token_hash = $1 AND used = false FOR UPDATE',
       [tokenHash]
     );
 
     if (tokenResult.rows.length === 0) {
-      return res.status(400).json({ error: 'Invalid or expired reset token' });
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'This reset link is invalid or has already been used. Please request a new one.' });
     }
 
     const resetRecord = tokenResult.rows[0];
 
-    if (resetRecord.used) {
-      return res.status(400).json({ error: 'This reset token has already been used' });
-    }
-
     if (new Date(resetRecord.expires_at) < new Date()) {
-      // Mark expired token as used to prevent replay
-      await pool.query('UPDATE password_reset_tokens SET used = true WHERE id = $1', [resetRecord.id]);
+      await client.query('UPDATE password_reset_tokens SET used = true WHERE id = $1', [resetRecord.id]);
+      await client.query('COMMIT');
       return res.status(400).json({ error: 'Reset token has expired. Please request a new one.' });
     }
 
+    // Mark this token as used FIRST (before changing password)
+    await client.query('UPDATE password_reset_tokens SET used = true WHERE id = $1', [resetRecord.id]);
+
+    // Invalidate all other unused tokens for this user
+    await client.query('UPDATE password_reset_tokens SET used = true WHERE user_id = $1 AND used = false', [resetRecord.user_id]);
+
     // Update password and invalidate all sessions
     const passwordHash = await bcrypt.hash(newPassword, 12);
-    await pool.query('UPDATE users SET password_hash = $1, active_token_hash = NULL, device_id = NULL WHERE id = $2', [passwordHash, resetRecord.user_id]);
+    await client.query('UPDATE users SET password_hash = $1, active_token_hash = NULL, device_id = NULL WHERE id = $2', [passwordHash, resetRecord.user_id]);
 
-    // Mark token as used
-    await pool.query('UPDATE password_reset_tokens SET used = true WHERE id = $1', [resetRecord.id]);
-
-    // Also invalidate all other unused tokens for this user
-    await pool.query('UPDATE password_reset_tokens SET used = true WHERE user_id = $1 AND used = false', [resetRecord.user_id]);
+    await client.query('COMMIT');
 
     res.json({ message: 'Password reset successfully. Please login with your new password.' });
   } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
     console.error('Reset password error:', err);
     res.status(500).json({ error: 'Internal server error' });
+  } finally {
+    client.release();
   }
 });
 
