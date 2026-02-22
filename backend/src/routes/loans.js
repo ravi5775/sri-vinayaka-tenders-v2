@@ -3,6 +3,7 @@ const { pool } = require('../config/database');
 const { authenticate } = require('../middleware/auth');
 const { sendEmail } = require('../config/email');
 const { highPaymentAlertTemplate } = require('../templates/emailTemplates');
+const { body, param, validationResult } = require('express-validator');
 
 const HIGH_PAYMENT_THRESHOLD = 30000; // ₹30,000
 
@@ -65,7 +66,19 @@ router.get('/', async (req, res) => {
 });
 
 // POST /api/loans
-router.post('/', async (req, res) => {
+router.post('/', [
+  body('customerName').trim().notEmpty().withMessage('Customer name is required').isLength({ max: 200 }),
+  body('loanType').trim().notEmpty().isIn(['Finance', 'Tender', 'InterestRate']).withMessage('Invalid loan type'),
+  body('loanAmount').isNumeric().withMessage('Loan amount must be a number'),
+  body('givenAmount').optional().isNumeric(),
+  body('interestRate').optional({ nullable: true }).isNumeric(),
+  body('durationValue').optional({ nullable: true }).isNumeric(),
+  body('durationUnit').optional({ nullable: true }).isIn(['Days', 'Weeks', 'Months']),
+  body('startDate').optional().isISO8601().toDate(),
+  body('phone').optional().trim().isLength({ max: 20 }),
+], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
   try {
     const { customerName, phone, loanType, loanAmount, givenAmount, interestRate, durationValue, durationUnit, startDate, status } = req.body;
     const result = await pool.query(
@@ -81,7 +94,20 @@ router.post('/', async (req, res) => {
 });
 
 // PUT /api/loans/:id
-router.put('/:id', async (req, res) => {
+router.put('/:id', [
+  param('id').isUUID(),
+  body('customerName').trim().notEmpty().isLength({ max: 200 }),
+  body('loanType').trim().notEmpty().isIn(['Finance', 'Tender', 'InterestRate']),
+  body('loanAmount').isNumeric(),
+  body('givenAmount').optional().isNumeric(),
+  body('interestRate').optional({ nullable: true }).isNumeric(),
+  body('durationValue').optional({ nullable: true }).isNumeric(),
+  body('durationUnit').optional({ nullable: true }).isIn(['Days', 'Weeks', 'Months']),
+  body('startDate').optional().isISO8601().toDate(),
+  body('phone').optional().trim().isLength({ max: 20 }),
+], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
   try {
     const { customerName, phone, loanType, loanAmount, givenAmount, interestRate, durationValue, durationUnit, startDate, status } = req.body;
     const result = await pool.query(
@@ -97,27 +123,41 @@ router.put('/:id', async (req, res) => {
   }
 });
 
-// POST /api/loans/delete-multiple
-router.post('/delete-multiple', async (req, res) => {
+// POST /api/loans/delete-multiple (wrapped in transaction)
+router.post('/delete-multiple', [
+  body('ids').isArray({ min: 1 }).withMessage('Loan IDs array is required'),
+  body('ids.*').isUUID().withMessage('Each loan ID must be a valid UUID'),
+], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+  const client = await pool.connect();
   try {
     const { ids } = req.body;
-    if (!ids || !Array.isArray(ids) || ids.length === 0) {
-      return res.status(400).json({ error: 'Loan IDs are required' });
-    }
-    // Delete transactions first (cascade should handle but be explicit)
-    await pool.query('DELETE FROM transactions WHERE loan_id = ANY($1::uuid[])', [ids]);
-    await pool.query('DELETE FROM loans WHERE id = ANY($1::uuid[])', [ids]);
+    await client.query('BEGIN');
+    await client.query('DELETE FROM transactions WHERE loan_id = ANY($1::uuid[])', [ids]);
+    await client.query('DELETE FROM loans WHERE id = ANY($1::uuid[])', [ids]);
+    await client.query('COMMIT');
     res.status(204).send();
   } catch (err) {
+    await client.query('ROLLBACK');
     console.error('Delete loans error:', err);
     res.status(500).json({ error: 'Internal server error' });
+  } finally {
+    client.release();
   }
 });
 
 // ─── Transaction Routes ─────────────────────
 
 // POST /api/loans/:loanId/transactions
-router.post('/:loanId/transactions', async (req, res) => {
+router.post('/:loanId/transactions', [
+  param('loanId').isUUID(),
+  body('amount').isNumeric().withMessage('Amount must be a number'),
+  body('payment_date').optional().isISO8601().toDate(),
+  body('payment_type').optional({ nullable: true }).isIn(['interest', 'principal']),
+], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
   try {
     const { amount, payment_date, payment_type } = req.body;
     // Verify loan exists and get customer name
@@ -201,7 +241,14 @@ router.post('/:loanId/transactions', async (req, res) => {
 });
 
 // PUT /api/loans/:loanId/transactions/:txnId
-router.put('/:loanId/transactions/:txnId', async (req, res) => {
+router.put('/:loanId/transactions/:txnId', [
+  param('loanId').isUUID(),
+  param('txnId').isUUID(),
+  body('amount').optional().isNumeric(),
+  body('payment_date').optional().isISO8601().toDate(),
+], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
   try {
     const { amount, payment_date } = req.body;
     const result = await pool.query(

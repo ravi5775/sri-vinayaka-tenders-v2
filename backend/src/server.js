@@ -1,4 +1,14 @@
 require('dotenv').config();
+
+// ─── Startup Guards: Fail fast if critical env vars are missing ────
+const REQUIRED_ENV = ['JWT_SECRET', 'DB_HOST', 'DB_NAME', 'DB_USER'];
+for (const key of REQUIRED_ENV) {
+  if (!process.env[key]) {
+    console.error(`FATAL: ${key} is not defined in environment. Exiting.`);
+    process.exit(1);
+  }
+}
+
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');

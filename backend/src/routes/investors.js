@@ -1,6 +1,7 @@
 const express = require('express');
 const { pool } = require('../config/database');
 const { authenticate } = require('../middleware/auth');
+const { body, param, validationResult } = require('express-validator');
 
 const router = express.Router();
 router.use(authenticate);
@@ -52,7 +53,15 @@ router.get('/', async (req, res) => {
 });
 
 // POST /api/investors
-router.post('/', async (req, res) => {
+router.post('/', [
+  body('name').trim().notEmpty().withMessage('Name is required').isLength({ max: 200 }),
+  body('investmentAmount').isNumeric().withMessage('Investment amount must be a number'),
+  body('investmentType').trim().notEmpty().withMessage('Investment type is required'),
+  body('profitRate').optional().isNumeric(),
+  body('startDate').optional().isISO8601().toDate(),
+], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
   try {
     const { name, investmentAmount, investmentType, profitRate, startDate, status } = req.body;
     const result = await pool.query(
@@ -68,7 +77,16 @@ router.post('/', async (req, res) => {
 });
 
 // PUT /api/investors/:id
-router.put('/:id', async (req, res) => {
+router.put('/:id', [
+  param('id').isUUID(),
+  body('name').trim().notEmpty().isLength({ max: 200 }),
+  body('investmentAmount').isNumeric(),
+  body('investmentType').trim().notEmpty(),
+  body('profitRate').optional().isNumeric(),
+  body('startDate').optional().isISO8601().toDate(),
+], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
   try {
     const { name, investmentAmount, investmentType, profitRate, startDate, status } = req.body;
     const result = await pool.query(
@@ -84,23 +102,42 @@ router.put('/:id', async (req, res) => {
   }
 });
 
-// DELETE /api/investors/:id
-router.delete('/:id', async (req, res) => {
+// DELETE /api/investors/:id (wrapped in transaction)
+router.delete('/:id', [param('id').isUUID()], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+  const client = await pool.connect();
   try {
-    await pool.query('DELETE FROM investor_payments WHERE investor_id = $1', [req.params.id]);
-    const result = await pool.query('DELETE FROM investors WHERE id = $1 RETURNING id', [req.params.id]);
-    if (result.rows.length === 0) return res.status(404).json({ error: 'Investor not found' });
+    await client.query('BEGIN');
+    await client.query('DELETE FROM investor_payments WHERE investor_id = $1', [req.params.id]);
+    const result = await client.query('DELETE FROM investors WHERE id = $1 RETURNING id', [req.params.id]);
+    if (result.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Investor not found' });
+    }
+    await client.query('COMMIT');
     res.status(204).send();
   } catch (err) {
+    await client.query('ROLLBACK');
     console.error('Delete investor error:', err);
     res.status(500).json({ error: 'Internal server error' });
+  } finally {
+    client.release();
   }
 });
 
 // ─── Investor Payment Routes ────────────────
 
 // POST /api/investors/:investorId/payments
-router.post('/:investorId/payments', async (req, res) => {
+router.post('/:investorId/payments', [
+  param('investorId').isUUID(),
+  body('amount').isNumeric().withMessage('Amount must be a number'),
+  body('payment_type').trim().notEmpty().withMessage('Payment type is required'),
+  body('payment_date').optional().isISO8601().toDate(),
+  body('remarks').optional().trim().isLength({ max: 500 }),
+], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
   try {
     const invCheck = await pool.query('SELECT id FROM investors WHERE id = $1', [req.params.investorId]);
     if (invCheck.rows.length === 0) return res.status(404).json({ error: 'Investor not found' });

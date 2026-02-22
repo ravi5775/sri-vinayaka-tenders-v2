@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const { pool } = require('../config/database');
 const { authenticate, hashToken } = require('../middleware/auth');
+const { body, validationResult } = require('express-validator');
 
 const router = express.Router();
 
@@ -25,12 +26,14 @@ const sanitizeInput = (str) => {
 };
 
 // POST /api/auth/login
-router.post('/login', async (req, res) => {
+router.post('/login', [
+  body('email').trim().isEmail().normalizeEmail().withMessage('Valid email is required'),
+  body('password').notEmpty().withMessage('Password is required'),
+], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
   try {
     const { email, password, forceLogin } = req.body;
-    if (!email || !password) {
-      return res.status(400).json({ error: 'Email and password are required' });
-    }
 
     const sanitizedEmail = sanitizeInput(email).toLowerCase();
 
@@ -131,12 +134,13 @@ router.get('/me', authenticate, async (req, res) => {
 });
 
 // POST /api/auth/forgot-password
-router.post('/forgot-password', async (req, res) => {
+router.post('/forgot-password', [
+  body('email').trim().isEmail().normalizeEmail().withMessage('Valid email is required'),
+], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
   try {
     const { email } = req.body;
-    if (!email) {
-      return res.status(400).json({ error: 'Email is required' });
-    }
 
     // Always return the same generic message regardless of outcome (anti-enumeration)
     const genericMessage = 'If an account with that email exists, a password reset link has been sent.';

@@ -5,48 +5,61 @@ const { pool } = require('../config/database');
 const { authenticate } = require('../middleware/auth');
 const { sendEmail } = require('../config/email');
 const { adminPasswordResetTemplate } = require('../templates/emailTemplates');
+const { body, param, validationResult } = require('express-validator');
+const { sendEmail } = require('../config/email');
+const { adminPasswordResetTemplate } = require('../templates/emailTemplates');
 
 const router = express.Router();
 
 // All admin routes require authentication
 router.use(authenticate);
 
-// POST /api/admin/create
-router.post('/create', async (req, res) => {
+// POST /api/admin/create (wrapped in transaction)
+router.post('/create', [
+  body('email').trim().isEmail().normalizeEmail().withMessage('Valid email is required'),
+  body('password').isLength({ min: 6, max: 128 }).withMessage('Password must be 6-128 characters'),
+], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+  const client = await pool.connect();
   try {
     const { email, password } = req.body;
-    if (!email || !password || password.length < 6) {
-      return res.status(400).json({ error: 'Email and password (min 6 chars) are required' });
-    }
 
-    const existing = await pool.query('SELECT id FROM users WHERE email = $1', [email.toLowerCase()]);
+    const existing = await client.query('SELECT id FROM users WHERE email = $1', [email.toLowerCase()]);
     if (existing.rows.length > 0) {
       return res.status(400).json({ error: 'User with this email already exists' });
     }
 
+    await client.query('BEGIN');
     const passwordHash = await bcrypt.hash(password, 12);
-    const result = await pool.query(
+    const result = await client.query(
       'INSERT INTO users (email, password_hash, display_name) VALUES ($1, $2, $3) RETURNING id, email',
       [email.toLowerCase(), passwordHash, email]
     );
 
     const newUser = result.rows[0];
-    await pool.query('INSERT INTO profiles (id, display_name) VALUES ($1, $2)', [newUser.id, email]);
+    await client.query('INSERT INTO profiles (id, display_name) VALUES ($1, $2)', [newUser.id, email]);
+    await client.query('COMMIT');
 
     res.json({ message: 'Admin created successfully', user: { id: newUser.id, email: newUser.email } });
   } catch (err) {
+    await client.query('ROLLBACK');
     console.error('Create admin error:', err);
     res.status(500).json({ error: 'Internal server error' });
+  } finally {
+    client.release();
   }
 });
 
 // PUT /api/admin/change-password
-router.put('/change-password', async (req, res) => {
+router.put('/change-password', [
+  body('oldPassword').notEmpty().withMessage('Old password is required'),
+  body('newPassword').isLength({ min: 6, max: 128 }).withMessage('New password must be 6-128 characters'),
+], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
   try {
     const { oldPassword, newPassword } = req.body;
-    if (!oldPassword || !newPassword || newPassword.length < 6) {
-      return res.status(400).json({ error: 'Old and new password (min 6 chars) are required' });
-    }
 
     const userResult = await pool.query('SELECT password_hash FROM users WHERE id = $1', [req.user.id]);
     if (userResult.rows.length === 0) {
@@ -81,27 +94,35 @@ router.get('/users', async (req, res) => {
   }
 });
 
-// DELETE /api/admin/users/:id - Delete an admin account
-router.delete('/users/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    if (id === req.user.id) {
-      return res.status(400).json({ error: 'You cannot delete your own account' });
-    }
+// DELETE /api/admin/users/:id - Delete an admin account (wrapped in transaction)
+router.delete('/users/:id', [param('id').isUUID()], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+  const { id } = req.params;
+  if (id === req.user.id) {
+    return res.status(400).json({ error: 'You cannot delete your own account' });
+  }
 
-    const existing = await pool.query('SELECT id FROM users WHERE id = $1', [id]);
+  const client = await pool.connect();
+  try {
+    const existing = await client.query('SELECT id FROM users WHERE id = $1', [id]);
     if (existing.rows.length === 0) {
       return res.status(404).json({ error: 'Admin not found' });
     }
 
-    await pool.query('DELETE FROM login_history WHERE user_id = $1', [id]);
-    await pool.query('DELETE FROM profiles WHERE id = $1', [id]);
-    await pool.query('DELETE FROM users WHERE id = $1', [id]);
+    await client.query('BEGIN');
+    await client.query('DELETE FROM login_history WHERE user_id = $1', [id]);
+    await client.query('DELETE FROM profiles WHERE id = $1', [id]);
+    await client.query('DELETE FROM users WHERE id = $1', [id]);
+    await client.query('COMMIT');
 
     res.json({ message: 'Admin deleted successfully' });
   } catch (err) {
+    await client.query('ROLLBACK');
     console.error('Delete admin error:', err);
     res.status(500).json({ error: 'Internal server error' });
+  } finally {
+    client.release();
   }
 });
 
