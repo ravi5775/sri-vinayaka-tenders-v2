@@ -238,13 +238,21 @@ const LoanForm: React.FC = () => {
                 </select>
               </div>
             </div>
-            <div className="p-4 bg-gradient-to-br from-primary/5 to-accent/5 rounded-xl text-center mt-4 border border-primary/10">
-              <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">
-                {durationUnit === 'Days' ? t("Interest per Day") : durationUnit === 'Weeks' ? t("Interest per Week") : t("First Month's Interest")}
-              </p>
-              <p className="text-xl font-bold text-primary mt-1">₹{interestPerPeriod.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</p>
-              <p className="text-xs text-muted-foreground mt-2">{t("Total amount due will change based on payments.")}</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+              <div className="p-4 bg-gradient-to-br from-primary/5 to-accent/5 rounded-xl text-center border border-primary/10">
+                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">
+                  {durationUnit === 'Days' ? t("Interest per Day") : durationUnit === 'Weeks' ? t("Interest per Week") : t("Interest per Month")}
+                </p>
+                <p className="text-xl font-bold text-primary mt-1">₹{interestPerPeriod.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</p>
+              </div>
+              <div className="p-4 bg-gradient-to-br from-success/5 to-accent/5 rounded-xl text-center border border-success/10">
+                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">
+                  {t("Total Interest")} ({durationValue || 0} {t(durationUnit || 'Months')})
+                </p>
+                <p className="text-xl font-bold text-success mt-1">₹{((interestPerPeriod) * (durationValue || 0)).toLocaleString('en-IN', { maximumFractionDigits: 2 })}</p>
+              </div>
             </div>
+            <p className="text-xs text-muted-foreground mt-2 text-center">{t("Total amount due will change based on payments.")}</p>
           </div>
         )}
 
