@@ -181,7 +181,10 @@ export const calculateTotalAmount = (loan: Loan): number => {
 };
 
 export const calculateBalance = (loan: Loan): number => {
-  if (loan.loanType === 'InterestRate') return getInterestRateCalculationDetails(loan).balance;
+  if (loan.loanType === 'InterestRate') {
+    // Balance = remaining principal only (interest is shown separately)
+    return getInterestRateCalculationDetails(loan).remainingPrincipal;
+  }
   const totalAmount = calculateTotalAmount(loan);
   const amountPaid = calculateAmountPaid(loan.transactions);
   return Math.max(0, totalAmount - amountPaid);
@@ -201,9 +204,7 @@ export const calculateLoanProfit = (loan: Loan): number => {
 
 export const calculateInterestAmount = (loan: Loan): number => {
   if (loan.loanType !== 'InterestRate') return 0;
-  const totalAmount = calculateTotalAmount(loan);
-  const amountPaid = calculateAmountPaid(loan.transactions);
-  return Math.max(0, totalAmount - loan.loanAmount);
+  return getInterestRateCalculationDetails(loan).pendingInterest;
 };
 
 export const calculateNextDueDate = (loan: Loan): Date | null => {

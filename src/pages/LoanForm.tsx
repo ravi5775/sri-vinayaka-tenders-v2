@@ -81,13 +81,7 @@ const LoanForm: React.FC = () => {
       if (!result.success) { setFormError(flattenZodErrors(result.error)); return false; }
     }
 
-    const duplicateLoan = loans.find(
-      l => l.customerName.trim().toLowerCase() === customerName.trim().toLowerCase() && (!isEditing || l.id !== id)
-    );
-    if (duplicateLoan) {
-      setFormError('A customer with this name already exists. Please use a different name.');
-      return false;
-    }
+    // Allow duplicate customer names — different loans can have the same customer
     return true;
   };
 
