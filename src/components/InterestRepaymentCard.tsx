@@ -3,9 +3,11 @@ import { Loan } from '../types';
 import { useLoans } from '../contexts/LoanContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useToastContext as useToast } from '../contexts/ToastContext';
-import { getLoanStatus, getInterestPerPeriod, getPendingInterest, getRemainingPrincipal } from '../utils/planCalculations';
-import { Search, IndianRupee, User, Calendar, CheckCircle, Loader2 } from 'lucide-react';
+import { getLoanStatus, getInterestPerPeriod, getPendingInterest, getRemainingPrincipal, getInterestBreakdown } from '../utils/planCalculations';
+import { Search, IndianRupee, User, Calendar, CheckCircle, Loader2, Info } from 'lucide-react';
 import { sanitize } from '../utils/sanitizer';
+
+const PERIODS_PER_MONTH_MAP: Record<string, number> = { Months: 1, Weeks: 4, Days: 30 };
 
 interface InterestRepaymentCardProps {
   title: string;
@@ -42,6 +44,13 @@ const InterestRepaymentCard: React.FC<InterestRepaymentCardProps> = ({ title }) 
   const periodInterest = selectedLoan ? getInterestPerPeriod(selectedLoan) : 0;
   const pendingInterest = selectedLoan ? getPendingInterest(selectedLoan) : 0;
   const remainingPrincipal = selectedLoan ? getRemainingPrincipal(selectedLoan) : 0;
+  const breakdown = useMemo(() => selectedLoan ? getInterestBreakdown(selectedLoan) : [], [selectedLoan, loans]);
+  const interestPayments = useMemo(() => {
+    if (!selectedLoan) return 0;
+    return (selectedLoan.transactions || [])
+      .filter(tx => tx.payment_type === 'interest' || !tx.payment_type)
+      .reduce((sum, tx) => sum + tx.amount, 0);
+  }, [selectedLoan, loans]);
   const durationUnit = selectedLoan?.durationUnit ?? 'Months';
   const periodLabel = durationUnit === 'Days' ? 'Daily' : durationUnit === 'Weeks' ? 'Weekly' : 'Monthly';
 
@@ -186,6 +195,45 @@ const InterestRepaymentCard: React.FC<InterestRepaymentCardProps> = ({ title }) 
             <p className="text-xs text-muted-foreground text-center pt-1 border-t border-border/30 pt-2">
               Closing Amount = ₹{(remainingPrincipal + pendingInterest).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
             </p>
+          </div>
+        )}
+
+        {/* Interest Breakdown */}
+        {selectedLoan && breakdown.length > 0 && (
+          <div className="p-3 bg-muted/50 rounded-lg border border-border/50 animate-fade-in-fast">
+            <div className="flex items-center gap-1.5 mb-2">
+              <Info size={14} className="text-primary" />
+              <p className="text-xs font-semibold text-foreground">Why Pending Interest = ₹{pendingInterest.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</p>
+            </div>
+            <div className="space-y-1">
+              {breakdown.map((b) => (
+                <div key={b.period} className="flex justify-between items-center text-[11px] text-muted-foreground">
+                  <span>
+                    {b.periodStart.toLocaleDateString('en-IN', { month: 'short', year: '2-digit' })} → {b.periodEnd.toLocaleDateString('en-IN', { month: 'short', year: '2-digit' })}
+                    {b.principalPaymentsInPeriod > 0 && (
+                      <span className="text-primary ml-1">(₹{b.principalPaymentsInPeriod.toLocaleString('en-IN')} principal paid)</span>
+                    )}
+                  </span>
+                  <span className="font-medium text-foreground">
+                    ₹{b.principalAfterPayments.toLocaleString('en-IN')} × {((selectedLoan.interestRate || 0) / (PERIODS_PER_MONTH_MAP[durationUnit] ?? 1)).toFixed(2)}% = ₹{b.interest.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <div className="border-t border-border/50 mt-2 pt-1.5 flex justify-between text-xs">
+              <span className="text-muted-foreground">Total Accrued</span>
+              <span className="font-bold text-foreground">₹{breakdown.reduce((s, b) => s + b.interest, 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}</span>
+            </div>
+            {interestPayments > 0 && (
+              <div className="flex justify-between text-xs">
+                <span className="text-muted-foreground">Interest Paid</span>
+                <span className="font-bold text-primary">− ₹{interestPayments.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</span>
+              </div>
+            )}
+            <div className="flex justify-between text-xs">
+              <span className="font-semibold text-destructive">Pending Interest</span>
+              <span className="font-bold text-destructive">₹{pendingInterest.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</span>
+            </div>
           </div>
         )}
 
