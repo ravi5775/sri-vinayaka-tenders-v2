@@ -4,16 +4,60 @@ const { getMongoClient } = require('../config/mongodb');
 const { sendEmail } = require('../config/email');
 const { backupEmailTemplate } = require('../templates/emailTemplates');
 const { pool } = require('../config/database');
+const { body, validationResult } = require('express-validator');
 
 const router = express.Router();
 router.use(authenticate);
+
+const APP_NAME = 'Sri Vinayaka Tenders';
+
+// #5 Fix: Validate backup data structure
+const validateBackupStructure = (data) => {
+  if (!data || typeof data !== 'object') return 'Backup data must be an object';
+  if (!data.loans && !data.investors) return 'Backup must contain loans or investors';
+
+  if (data.loans && !Array.isArray(data.loans)) return 'loans must be an array';
+  if (data.investors && !Array.isArray(data.investors)) return 'investors must be an array';
+
+  // Validate loan structure
+  if (data.loans) {
+    for (let i = 0; i < data.loans.length; i++) {
+      const loan = data.loans[i];
+      if (!loan.customerName || typeof loan.customerName !== 'string') {
+        return `loans[${i}].customerName is required and must be a string`;
+      }
+      if (!loan.loanType || !['Finance', 'Tender', 'InterestRate'].includes(loan.loanType)) {
+        return `loans[${i}].loanType must be Finance, Tender, or InterestRate`;
+      }
+      if (typeof loan.loanAmount !== 'number' || loan.loanAmount < 0) {
+        return `loans[${i}].loanAmount must be a non-negative number`;
+      }
+    }
+  }
+
+  // Validate investor structure
+  if (data.investors) {
+    for (let i = 0; i < data.investors.length; i++) {
+      const inv = data.investors[i];
+      if (!inv.name || typeof inv.name !== 'string') {
+        return `investors[${i}].name is required and must be a string`;
+      }
+      if (!inv.investmentType || typeof inv.investmentType !== 'string') {
+        return `investors[${i}].investmentType is required`;
+      }
+    }
+  }
+
+  return null; // Valid
+};
 
 // POST /api/backup/mongodb
 router.post('/mongodb', async (req, res) => {
   try {
     const data = req.body;
-    if (!data || (!data.loans && !data.investors)) {
-      return res.status(400).json({ error: 'Backup data is required' });
+    const validationError = validateBackupStructure(data);
+    if (validationError) {
+      return res.status(400).json({ error: validationError });
     }
 
     const db = await getMongoClient();
@@ -40,8 +84,9 @@ router.post('/mongodb', async (req, res) => {
 router.post('/email', async (req, res) => {
   try {
     const data = req.body;
-    if (!data || (!data.loans && !data.investors)) {
-      return res.status(400).json({ error: 'Backup data is required' });
+    const validationError = validateBackupStructure(data);
+    if (validationError) {
+      return res.status(400).json({ error: validationError });
     }
 
     // Get admin user info
@@ -70,7 +115,5 @@ router.post('/email', async (req, res) => {
     res.status(500).json({ error: 'Failed to send backup email: ' + err.message });
   }
 });
-
-const APP_NAME = 'Sri Vinayaka Tenders';
 
 module.exports = router;
