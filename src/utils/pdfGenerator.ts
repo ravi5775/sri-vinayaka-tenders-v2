@@ -53,19 +53,16 @@ const buildPdf = (doc: jsPDF, loan: Loan, logoDataUri: string | null) => {
     } catch (_) { /* ignore */ }
   }
 
-  // ── Company name & receipt label ───────────────────────────────────────
-  const textX = logoDataUri ? margin + 30 : pageW / 2;
-  const textAlign = logoDataUri ? 'left' : 'center';
-
+  // ── Company name & receipt label (always centered) ──────────────────
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(13);
   doc.setTextColor(255, 255, 255);
-  doc.text('Sri Vinayaka Tenders', textX, 14, { align: textAlign });
+  doc.text('Sri Vinayaka Tenders', pageW / 2, 14, { align: 'center' });
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7.5);
   doc.setTextColor(180, 210, 255);
-  doc.text('Official Loan Receipt', textX, 21, { align: textAlign });
+  doc.text('Official Loan Receipt', pageW / 2, 21, { align: 'center' });
 
   // Receipt badge (right side of header)
   doc.setFillColor(255, 255, 255);
