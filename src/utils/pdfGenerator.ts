@@ -55,7 +55,7 @@ const buildPdf = (doc: jsPDF, loan: Loan, logoDataUri: string | null) => {
 
   // ── Company name & receipt label (always centered) ──────────────────
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(13);
+  doc.setFontSize(18);
   doc.setTextColor(255, 255, 255);
   doc.text('Sri Vinayaka Tenders', pageW / 2, 14, { align: 'center' });
 
