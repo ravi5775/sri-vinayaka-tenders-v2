@@ -54,7 +54,7 @@ const buildPdf = (doc: jsPDF, loan: Loan, logoDataUri: string | null) => {
   }
 
   // ── Company name & receipt label ───────────────────────────────────────
-  const textX = logoDataUri ? margin + 22 : pageW / 2;
+  const textX = logoDataUri ? margin + 30 : pageW / 2;
   const textAlign = logoDataUri ? 'left' : 'center';
 
   doc.setFont('helvetica', 'bold');
