@@ -1,0 +1,238 @@
+const express = require('express');
+const { pool } = require('../config/database');
+const { authenticate } = require('../middleware/auth');
+const { body, param, validationResult } = require('express-validator');
+
+const router = express.Router();
+router.use(authenticate);
+
+// ─── Helpers ────────────────────────────────
+const mapInvestor = (row, payments = []) => ({
+  id: row.id,
+  user_id: row.user_id,
+  name: row.name,
+  investmentAmount: Number(row.investment_amount),
+  investmentType: row.investment_type,
+  profitRate: Number(row.profit_rate),
+  startDate: row.start_date,
+  status: row.status,
+  payments,
+  created_at: row.created_at,
+  updated_at: row.updated_at,
+});
+
+const mapPayment = (row) => ({
+  id: row.id,
+  investor_id: row.investor_id,
+  user_id: row.user_id,
+  amount: Number(row.amount),
+  payment_date: row.payment_date,
+  payment_type: row.payment_type,
+  remarks: row.remarks || undefined,
+  created_at: row.created_at,
+});
+
+// GET /api/investors — supports optional pagination via ?page=1&limit=50
+router.get('/', async (req, res) => {
+  try {
+    const page = Math.max(1, parseInt(req.query.page) || 0);
+    const limit = Math.min(500, Math.max(1, parseInt(req.query.limit) || 0));
+    const usePagination = req.query.page || req.query.limit;
+
+    let invResult;
+    if (usePagination) {
+      const offset = (page - 1) * limit;
+      invResult = await pool.query(
+        'SELECT * FROM investors WHERE user_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3',
+        [req.user.id, limit, offset]
+      );
+    } else {
+      invResult = await pool.query('SELECT * FROM investors WHERE user_id = $1 ORDER BY created_at DESC', [req.user.id]);
+    }
+
+    // Fetch payments only for returned investors
+    const invIds = invResult.rows.map(r => r.id);
+    let payResult;
+    if (invIds.length > 0) {
+      payResult = await pool.query(
+        'SELECT * FROM investor_payments WHERE investor_id = ANY($1::uuid[]) ORDER BY payment_date DESC',
+        [invIds]
+      );
+    } else {
+      payResult = { rows: [] };
+    }
+
+    const payMap = {};
+    payResult.rows.forEach(p => {
+      if (!payMap[p.investor_id]) payMap[p.investor_id] = [];
+      payMap[p.investor_id].push(mapPayment(p));
+    });
+
+    const investors = invResult.rows.map(row => mapInvestor(row, payMap[row.id] || []));
+
+    if (usePagination) {
+      const countResult = await pool.query('SELECT COUNT(*) FROM investors WHERE user_id = $1', [req.user.id]);
+      const total = parseInt(countResult.rows[0].count);
+      res.json({ investors, total, page, limit, totalPages: Math.ceil(total / limit) });
+    } else {
+      res.json(investors);
+    }
+  } catch (err) {
+    console.error('Get investors error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/investors
+router.post('/', [
+  body('name').trim().notEmpty().withMessage('Name is required').isLength({ max: 200 }),
+  body('investmentAmount').isNumeric().withMessage('Investment amount must be a number'),
+  body('investmentType').trim().notEmpty().withMessage('Investment type is required'),
+  body('profitRate').optional().isNumeric(),
+  body('startDate').optional().isISO8601().toDate(),
+], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+  try {
+    const { name, investmentAmount, investmentType, profitRate, startDate, status } = req.body;
+    const result = await pool.query(
+      `INSERT INTO investors (user_id, name, investment_amount, investment_type, profit_rate, start_date, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+      [req.user.id, name, investmentAmount || 0, investmentType, profitRate || 0, startDate || new Date().toISOString().split('T')[0], status || 'On Track']
+    );
+    res.status(201).json(mapInvestor(result.rows[0]));
+  } catch (err) {
+    console.error('Create investor error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// PUT /api/investors/:id
+router.put('/:id', [
+  param('id').isUUID(),
+  body('name').trim().notEmpty().isLength({ max: 200 }),
+  body('investmentAmount').isNumeric(),
+  body('investmentType').trim().notEmpty(),
+  body('profitRate').optional().isNumeric(),
+  body('startDate').optional().isISO8601().toDate(),
+], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+  try {
+    const { name, investmentAmount, investmentType, profitRate, startDate, status } = req.body;
+    const result = await pool.query(
+      `UPDATE investors SET name=$1, investment_amount=$2, investment_type=$3, profit_rate=$4, start_date=$5, status=$6
+       WHERE id=$7 AND user_id=$8 RETURNING *`,
+      [name, investmentAmount, investmentType, profitRate, startDate, status, req.params.id, req.user.id]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Investor not found' });
+    res.json(mapInvestor(result.rows[0]));
+  } catch (err) {
+    console.error('Update investor error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// DELETE /api/investors/:id (wrapped in transaction)
+router.delete('/:id', [param('id').isUUID()], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    // Verify investor belongs to current user
+    const invCheck = await client.query('SELECT id FROM investors WHERE id = $1 AND user_id = $2', [req.params.id, req.user.id]);
+    if (invCheck.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Investor not found' });
+    }
+    await client.query('DELETE FROM investor_payments WHERE investor_id = $1', [req.params.id]);
+    const result = await client.query('DELETE FROM investors WHERE id = $1 RETURNING id', [req.params.id]);
+    await client.query('COMMIT');
+    res.status(204).send();
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Delete investor error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  } finally {
+    client.release();
+  }
+});
+
+// ─── Investor Payment Routes ────────────────
+
+// POST /api/investors/:investorId/payments
+router.post('/:investorId/payments', [
+  param('investorId').isUUID(),
+  body('amount').isNumeric().withMessage('Amount must be a number'),
+  body('payment_type').trim().notEmpty().withMessage('Payment type is required'),
+  body('payment_date').optional().isISO8601().toDate(),
+  body('remarks').optional().trim().isLength({ max: 500 }),
+], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+  try {
+    const invCheck = await pool.query('SELECT id FROM investors WHERE id = $1 AND user_id = $2', [req.params.investorId, req.user.id]);
+    if (invCheck.rows.length === 0) return res.status(404).json({ error: 'Investor not found' });
+
+    const { amount, payment_date, payment_type, remarks } = req.body;
+    const result = await pool.query(
+      'INSERT INTO investor_payments (investor_id, user_id, amount, payment_date, payment_type, remarks) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
+      [req.params.investorId, req.user.id, amount, payment_date || new Date().toISOString().split('T')[0], payment_type, remarks || null]
+    );
+    res.status(201).json(mapPayment(result.rows[0]));
+  } catch (err) {
+    console.error('Add investor payment error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// PUT /api/investors/:investorId/payments/:payId
+router.put('/:investorId/payments/:payId', async (req, res) => {
+  try {
+    // Verify investor belongs to current user
+    const invCheck = await pool.query('SELECT id FROM investors WHERE id = $1 AND user_id = $2', [req.params.investorId, req.user.id]);
+    if (invCheck.rows.length === 0) return res.status(404).json({ error: 'Investor not found' });
+    
+    const { amount, payment_date, payment_type, remarks } = req.body;
+    const result = await pool.query(
+      `UPDATE investor_payments SET amount=COALESCE($1,amount), payment_date=COALESCE($2,payment_date), payment_type=COALESCE($3,payment_type), remarks=COALESCE($4,remarks)
+       WHERE id=$5 RETURNING *`,
+      [amount, payment_date, payment_type, remarks, req.params.payId]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Payment not found' });
+
+    // Return full investor with payments
+    const invResult = await pool.query('SELECT * FROM investors WHERE id = $1', [req.params.investorId]);
+    const payResult = await pool.query('SELECT * FROM investor_payments WHERE investor_id = $1 ORDER BY payment_date DESC', [req.params.investorId]);
+    res.json(mapInvestor(invResult.rows[0], payResult.rows.map(mapPayment)));
+  } catch (err) {
+    console.error('Update investor payment error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// DELETE /api/investors/:investorId/payments/:payId
+router.delete('/:investorId/payments/:payId', async (req, res) => {
+  try {
+    // Verify investor belongs to current user AND payment belongs to that investor
+    const paymentCheck = await pool.query(
+      `SELECT ip.id FROM investor_payments ip
+       JOIN investors i ON ip.investor_id = i.id
+       WHERE ip.id = $1 AND i.id = $2 AND i.user_id = $3`,
+      [req.params.payId, req.params.investorId, req.user.id]
+    );
+    if (paymentCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Payment not found or does not belong to this investor' });
+    }
+    
+    const result = await pool.query('DELETE FROM investor_payments WHERE id = $1 RETURNING id', [req.params.payId]);
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Payment not found' });
+    res.status(204).send();
+  } catch (err) {
+    console.error('Delete investor payment error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+module.exports = router;
