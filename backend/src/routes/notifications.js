@@ -1,4 +1,5 @@
 const express = require('express');
+const { query, param, validationResult } = require('express-validator');
 const { pool } = require('../config/database');
 const { authenticate } = require('../middleware/auth');
 
@@ -6,18 +7,25 @@ const router = express.Router();
 router.use(authenticate);
 
 // GET /api/notifications
-router.get('/', async (req, res) => {
+router.get('/', [
+  query('is_read').optional().isBoolean().withMessage('is_read must be a boolean'),
+], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
   try {
-    let query = 'SELECT * FROM notifications WHERE user_id = $1';
-    const params = [req.user.id];
-
     if (req.query.is_read !== undefined) {
-      query += ' AND is_read = $2';
-      params.push(req.query.is_read === 'true');
+      const result = await pool.query(
+        'SELECT * FROM notifications WHERE user_id = $1 AND is_read = $2 ORDER BY created_at DESC LIMIT 100',
+        [req.user.id, req.query.is_read === 'true']
+      );
+      return res.json(result.rows);
     }
-    query += ' ORDER BY created_at DESC LIMIT 100';
 
-    const result = await pool.query(query, params);
+    const result = await pool.query(
+      'SELECT * FROM notifications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 100',
+      [req.user.id]
+    );
     res.json(result.rows);
   } catch (err) {
     console.error('Get notifications error:', err);
@@ -65,7 +73,12 @@ router.post('/', async (req, res) => {
 });
 
 // PUT /api/notifications/:id/read
-router.put('/:id/read', async (req, res) => {
+router.put('/:id/read', [
+  param('id').isUUID().withMessage('Invalid notification id'),
+], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
   try {
     const result = await pool.query('UPDATE notifications SET is_read = true WHERE id = $1 AND user_id = $2 RETURNING id', [req.params.id, req.user.id]);
     if (result.rows.length === 0) return res.status(404).json({ error: 'Notification not found' });
