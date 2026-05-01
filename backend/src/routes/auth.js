@@ -67,6 +67,12 @@ router.post('/login', [
       });
     }
 
+    // If forceLogin is requested and there was an existing session on another device,
+    // log an informational message to aid debugging and auditing.
+    if (forceLogin && user.active_token_hash && user.device_id && user.device_id !== currentDeviceId) {
+      console.log(`Force login requested for user=${user.email}. Invalidating previous session device=${user.device_id}`);
+    }
+
     // Generate token with 24h strict expiry
     const token = jwt.sign(
       { id: user.id, email: user.email },
