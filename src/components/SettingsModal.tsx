@@ -41,8 +41,6 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
     }
   };
 
-  const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyvTC3wwj7UkOuVadvisinRCNag2tDlKZpoyQqa9ij-TJXS5Q_hdMuvMGZQi0MlCOaI/exec';
-
   const getBackupData = () => {
     return { loans, investors, exportedAt: new Date().toISOString() };
   };
@@ -60,20 +58,19 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
       const jsonString = JSON.stringify(data, null, 2);
       const fileName = getFileName();
 
-      // Upload to Google Drive via Apps Script
-      const base64Data = btoa(unescape(encodeURIComponent(jsonString)));
-      const payload = {
-        filename: fileName,
-        mimeType: 'application/json',
-        data: base64Data,
-      };
-
-      await fetch(APPS_SCRIPT_URL, {
+      // Upload to Google Drive via backend API (NOT direct to Apps Script)
+      // Backend makes the external call, avoiding CSP restrictions on frontend
+      const response = await fetch('/api/backup/google-drive', {
         method: 'POST',
-        mode: 'no-cors',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
       });
+
+      if (!response.ok) {
+        throw new Error(`Backend backup failed: ${response.statusText}`);
+      }
+
+      const result = await response.json();
+      }
 
       // Also download locally as a fallback
       const blob = new Blob([jsonString], { type: 'application/json' });

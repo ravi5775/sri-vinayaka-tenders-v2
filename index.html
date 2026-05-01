@@ -3,23 +3,9 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <!-- Security: Content-Security-Policy -->
-    <meta http-equiv="Content-Security-Policy"
-      content="default-src 'self';
-               script-src 'self' 'unsafe-inline';
-               style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
-               font-src 'self' https://fonts.gstatic.com;
-               img-src 'self' data: blob:;
-               connect-src 'self';
-               frame-ancestors 'none';
-               base-uri 'self';
-               form-action 'self';" />
-    <!-- Security: Prevent clickjacking -->
-    <meta http-equiv="X-Frame-Options" content="DENY" />
-    <!-- Security: Prevent MIME sniffing -->
-    <meta http-equiv="X-Content-Type-Options" content="nosniff" />
-    <!-- Security: Force HTTPS (HSTS via meta - backup; prefer server header) -->
-    <meta http-equiv="Strict-Transport-Security" content="max-age=31536000; includeSubDomains" />
+    <!-- Security Headers: Set via HTTP response headers from backend (app.js) -->
+    <!-- Meta tags cannot enforce frame-ancestors, X-Frame-Options, or HSTS properly -->
+    <!-- See backend/src/app.js for Helmet security configuration -->
     <link rel="icon" type="image/png" href="/favicon.png">
     <title>Sri Vinayaka Tenders</title>
     <meta name="description" content="Loan Management System">
