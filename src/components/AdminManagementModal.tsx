@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, UserPlus, KeyRound, History, Loader2, Eye, EyeOff, Users, Trash2, RotateCcw, Mail } from 'lucide-react';
+import { X, UserPlus, KeyRound, History, Loader2, Eye, EyeOff, Users, Trash2, RotateCcw, Mail, PencilLine } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useToastContext } from '../contexts/ToastContext';
@@ -49,6 +49,9 @@ const AdminManagementModal: React.FC<AdminManagementModalProps> = ({ isOpen, onC
 
   const [adminUsers, setAdminUsers] = useState<AdminUser[]>([]);
   const [isLoadingAdmins, setIsLoadingAdmins] = useState(false);
+  const [editTarget, setEditTarget] = useState<AdminUser | null>(null);
+  const [editEmail, setEditEmail] = useState('');
+  const [isSavingEmail, setIsSavingEmail] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<AdminUser | null>(null);
   const [isDeletingAdmin, setIsDeletingAdmin] = useState(false);
   const [resetTarget, setResetTarget] = useState<AdminUser | null>(null);
@@ -85,6 +88,32 @@ const AdminManagementModal: React.FC<AdminManagementModalProps> = ({ isOpen, onC
       showToast(err.message || 'Failed to delete admin.', 'error');
     } finally {
       setIsDeletingAdmin(false);
+    }
+  };
+
+  const handleEditAdminEmail = (admin: AdminUser) => {
+    setEditTarget(admin);
+    setEditEmail(admin.email);
+  };
+
+  const handleSaveAdminEmail = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editTarget || !editEmail.trim()) {
+      showToast('Email is required.', 'error');
+      return;
+    }
+
+    setIsSavingEmail(true);
+    try {
+      const result = await apiService.updateAdminEmail(editTarget.id, editEmail.trim());
+      showToast(result.message || 'Admin email updated successfully!', 'success');
+      setEditTarget(null);
+      setEditEmail('');
+      await fetchAdminUsers();
+    } catch (err: any) {
+      showToast(err.message || 'Failed to update admin email.', 'error');
+    } finally {
+      setIsSavingEmail(false);
     }
   };
 
@@ -204,6 +233,9 @@ const AdminManagementModal: React.FC<AdminManagementModalProps> = ({ isOpen, onC
               </h3>
               <span className="text-xs text-muted-foreground font-medium">{adminUsers.length} account{adminUsers.length !== 1 ? 's' : ''}</span>
             </div>
+            <p className="text-xs text-muted-foreground">
+              Daily 8 PM backup emails are sent to every admin email listed here.
+            </p>
             {isLoadingAdmins ? (
               <div className="flex justify-center py-6"><Loader2 className="animate-spin h-6 w-6 text-primary" /></div>
             ) : adminUsers.length > 0 ? (
@@ -229,26 +261,35 @@ const AdminManagementModal: React.FC<AdminManagementModalProps> = ({ isOpen, onC
                         <td className="px-4 py-2.5 text-muted-foreground text-xs">{admin.display_name || '—'}</td>
                         <td className="px-4 py-2.5 text-muted-foreground whitespace-nowrap text-xs">{new Date(admin.created_at).toLocaleDateString()}</td>
                         <td className="px-4 py-2.5 text-right">
-                          {admin.id !== user?.id ? (
-                            <div className="flex items-center justify-end gap-1">
-                              <button
-                                onClick={() => setResetTarget(admin)}
-                                className="p-1.5 rounded-lg hover:bg-primary/10 text-primary transition-colors duration-150"
-                                title="Reset password & send email"
-                              >
-                                <Mail size={14} />
-                              </button>
-                              <button
-                                onClick={() => setDeleteTarget(admin)}
-                                className="p-1.5 rounded-lg hover:bg-destructive/10 text-destructive transition-colors duration-150"
-                                title="Delete admin"
-                              >
-                                <Trash2 size={14} />
-                              </button>
-                            </div>
-                          ) : (
-                            <span className="text-xs text-muted-foreground">—</span>
-                          )}
+                          <div className="flex items-center justify-end gap-1">
+                            <button
+                              onClick={() => handleEditAdminEmail(admin)}
+                              className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors duration-150"
+                              title="Edit email"
+                            >
+                              <PencilLine size={14} />
+                            </button>
+                            {admin.id !== user?.id ? (
+                              <>
+                                <button
+                                  onClick={() => setResetTarget(admin)}
+                                  className="p-1.5 rounded-lg hover:bg-primary/10 text-primary transition-colors duration-150"
+                                  title="Reset password & send email"
+                                >
+                                  <Mail size={14} />
+                                </button>
+                                <button
+                                  onClick={() => setDeleteTarget(admin)}
+                                  className="p-1.5 rounded-lg hover:bg-destructive/10 text-destructive transition-colors duration-150"
+                                  title="Delete admin"
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                              </>
+                            ) : (
+                              <span className="text-xs text-muted-foreground px-1">Self</span>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -257,6 +298,35 @@ const AdminManagementModal: React.FC<AdminManagementModalProps> = ({ isOpen, onC
               </div>
             ) : (
               <p className="text-sm text-muted-foreground py-6 text-center">{t('No admin accounts found.')}</p>
+            )}
+
+            {editTarget && (
+              <form onSubmit={handleSaveAdminEmail} className="mt-4 rounded-xl border border-border/50 bg-background p-4 space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <h4 className="text-sm font-semibold text-foreground">Edit Admin Email</h4>
+                    <p className="text-xs text-muted-foreground">This email will receive the daily backup report.</p>
+                  </div>
+                  <button type="button" onClick={() => { setEditTarget(null); setEditEmail(''); }} className="text-xs text-muted-foreground hover:text-foreground">
+                    Cancel
+                  </button>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-foreground mb-1.5">Email address</label>
+                  <input
+                    type="email"
+                    value={editEmail}
+                    onChange={e => setEditEmail(e.target.value)}
+                    className={inputClass}
+                    placeholder="admin@svt.com"
+                    required
+                  />
+                </div>
+                <button type="submit" className="btn btn-primary" disabled={isSavingEmail}>
+                  {isSavingEmail ? <Loader2 className="animate-spin h-4 w-4 mr-2" /> : null}
+                  Save Email
+                </button>
+              </form>
             )}
           </div>
 

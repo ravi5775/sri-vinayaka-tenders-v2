@@ -131,6 +131,41 @@ router.delete('/users/:id', [param('id').isUUID()], async (req, res) => {
   }
 });
 
+// PUT /api/admin/users/:id/email - Update an admin email address
+router.put('/users/:id/email', [
+  param('id').isUUID(),
+  body('email').trim().isEmail().normalizeEmail({ gmail_remove_dots: false }).withMessage('Valid email is required'),
+], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
+  const { id } = req.params;
+  const { email } = req.body;
+
+  try {
+    const existingUser = await pool.query('SELECT id, email FROM users WHERE id = $1', [id]);
+    if (existingUser.rows.length === 0) {
+      return res.status(404).json({ error: 'Admin not found' });
+    }
+
+    const normalizedEmail = email.toLowerCase();
+    const duplicate = await pool.query('SELECT id FROM users WHERE email = $1 AND id <> $2', [normalizedEmail, id]);
+    if (duplicate.rows.length > 0) {
+      return res.status(400).json({ error: 'Another account already uses this email address' });
+    }
+
+    await pool.query('UPDATE users SET email = $1 WHERE id = $2', [normalizedEmail, id]);
+
+    res.json({
+      message: 'Admin email updated successfully',
+      user: { id, email: normalizedEmail },
+    });
+  } catch (err) {
+    console.error('Update admin email error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // POST /api/admin/reset-password/:id - Admin resets another user's password and emails it
 router.post('/reset-password/:id', async (req, res) => {
   try {

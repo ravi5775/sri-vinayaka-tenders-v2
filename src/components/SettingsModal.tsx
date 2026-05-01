@@ -60,16 +60,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
 
       // Upload to Google Drive via backend API (NOT direct to Apps Script)
       // Backend makes the external call, avoiding CSP restrictions on frontend
-      const response = await fetch('/api/backup/google-drive', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      });
-
-      if (!response.ok) {
-        throw new Error(`Backend backup failed: ${response.statusText}`);
-      }
-
-      const result = await response.json();
+      const result = await apiService.backupToGoogleDrive();
 
       // Also download locally as a fallback
       const blob = new Blob([jsonString], { type: 'application/json' });

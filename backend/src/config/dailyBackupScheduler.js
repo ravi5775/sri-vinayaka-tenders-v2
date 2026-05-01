@@ -34,12 +34,26 @@ const runDailyBackupReport = async () => {
 
   // Get all admin emails
   const adminsResult = await pool.query(
-    'SELECT u.email, p.display_name FROM users u LEFT JOIN profiles p ON u.id::text = p.id::text WHERE u.role = $1 ORDER BY u.created_at',
+    `SELECT DISTINCT u.id, u.email, COALESCE(p.display_name, split_part(u.email, '@', 1)) AS display_name
+     FROM users u
+     LEFT JOIN profiles p ON u.id = p.id
+     WHERE u.role = $1 AND u.email IS NOT NULL AND u.email <> ''
+     ORDER BY u.created_at`,
     ['admin']
   );
 
+  const adminRecipients = adminsResult.rows.length > 0
+    ? adminsResult.rows
+    : process.env.ADMIN_NOTIFICATION_EMAIL
+      ? [{ id: null, email: process.env.ADMIN_NOTIFICATION_EMAIL, display_name: process.env.ADMIN_NOTIFICATION_EMAIL.split('@')[0] }]
+      : [];
+
+  if (adminsResult.rows.length === 0) {
+    console.warn('⚠️ No admin recipients found in database, falling back to ADMIN_NOTIFICATION_EMAIL');
+  }
+
   // Send emails to all admins
-  const emailPromises = adminsResult.rows.map(admin => {
+  const emailPromises = adminRecipients.map(admin => {
     const html = dailyBackupEmailTemplate(
       admin.display_name || admin.email.split('@')[0],
       backupData,
@@ -58,12 +72,12 @@ const runDailyBackupReport = async () => {
   });
 
   await Promise.all(emailPromises);
-  console.log(`✅ Daily backup emails sent to ${adminsResult.rows.length} admins`);
+  console.log(`✅ Daily backup emails sent to ${adminRecipients.length} admins`);
 
   return {
     backupData,
     results,
-    admins: adminsResult.rows,
+    admins: adminRecipients,
   };
 };
 

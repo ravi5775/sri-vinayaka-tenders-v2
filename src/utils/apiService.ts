@@ -106,6 +106,9 @@ const apiService = {
   getAdminUsers: async (): Promise<any[]> => {
     return authFetch('/admin/users');
   },
+  updateAdminEmail: async (id: string, email: string): Promise<any> => {
+    return authFetch(`/admin/users/${id}/email`, { method: 'PUT', body: JSON.stringify({ email }) });
+  },
   deleteAdmin: async (id: string): Promise<void> => {
     return authFetch(`/admin/users/${id}`, { method: 'DELETE' });
   },
@@ -181,6 +184,9 @@ const apiService = {
   },
   backupToMongo: async (data: any): Promise<void> => {
     return authFetch('/backup/mongodb', { method: 'POST', body: JSON.stringify(data) });
+  },
+  backupToGoogleDrive: async (): Promise<any> => {
+    return authFetch('/backup/google-drive', { method: 'POST' });
   },
   sendBackupEmail: async (data: any): Promise<any> => {
     return authFetch('/backup/email', { method: 'POST', body: JSON.stringify(data) });
