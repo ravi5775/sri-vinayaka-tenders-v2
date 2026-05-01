@@ -70,7 +70,6 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
       }
 
       const result = await response.json();
-      }
 
       // Also download locally as a fallback
       const blob = new Blob([jsonString], { type: 'application/json' });
