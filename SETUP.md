@@ -7,11 +7,12 @@
 ## 📋 Table of Contents
 
 1. [Architecture Overview](#architecture-overview)
-2. [Local Development Setup](#local-development-setup)
-3. [AWS EC2 Production Deployment](#aws-ec2-production-deployment)
-4. [Post-Deployment Verification](#post-deployment-verification)
-5. [Maintenance & Operations](#maintenance--operations)
-6. [Troubleshooting](#troubleshooting)
+2. [Vercel Production Deployment](#vercel-production-deployment)
+3. [Local Development Setup](#local-development-setup)
+4. [AWS EC2 Production Deployment](#aws-ec2-production-deployment)
+5. [Post-Deployment Verification](#post-deployment-verification)
+6. [Maintenance & Operations](#maintenance--operations)
+7. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -45,6 +46,77 @@
 | **MongoDB Atlas** | Optional backup/restore only |
 | **Nginx** | Reverse proxy, serves static files |
 | **PM2** | Process manager (auto-restart, logs) |
+
+---
+
+## Vercel Production Deployment
+
+### 1. Configure project root
+
+This repository deploys from the root and uses:
+
+- frontend build output: `dist`
+- API entrypoint: `api/index.js`
+- backend source code under `backend/src`
+
+`vercel.json` is already included and configured.
+
+### 2. Create PostgreSQL on Vercel
+
+1. In Vercel dashboard, open **Storage**.
+2. Create **Postgres** database.
+3. Copy connection strings.
+
+### 3. Set environment variables (Vercel Project Settings)
+
+Required:
+
+```env
+NODE_ENV=production
+DATABASE_URL=postgresql://...
+DIRECT_URL=postgresql://...
+JWT_SECRET=<strong-random-secret>
+CORS_ORIGIN=https://<your-domain>
+FRONTEND_URL=https://<your-domain>
+VITE_API_URL=/api
+VITE_ENABLE_WEBSOCKET=false
+```
+
+Optional:
+
+```env
+MONGODB_URI=mongodb+srv://...
+EMAIL_ENABLED=true
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_AUTH_REQUIRED=true
+SMTP_USERNAME=...
+SMTP_PASSWORD=...
+```
+
+### 4. Apply database schema
+
+Run once from local machine (or CI) against production DB:
+
+```bash
+cd backend
+npm install
+npm run prisma:generate
+npm run prisma:migrate
+```
+
+If this is a first-time setup with no existing DB objects, run `backend/database/schema.sql` once before Prisma migrations.
+
+### 5. Deploy
+
+1. Import repository to Vercel.
+2. Ensure framework is detected as Vite.
+3. Trigger deployment.
+
+Health endpoint after deploy:
+
+`/api/health`
 
 ---
 

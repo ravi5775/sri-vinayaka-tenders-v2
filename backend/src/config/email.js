@@ -27,14 +27,16 @@ const getTransporter = () => {
   return transporter;
 };
 
-const sendEmail = async (to, subject, html) => {
+const sendEmail = async (to, subject, html, attachments = []) => {
   const transport = getTransporter();
   if (!transport) {
     console.log(`📧 [Email Disabled] To: ${to} | Subject: ${subject}`);
     return { success: false, reason: 'Email disabled' };
   }
 
-  const maxRetries = parseInt(process.env.EMAIL_MAX_RETRIES || '3');
+  const configuredRetries = parseInt(process.env.EMAIL_MAX_RETRIES || '3');
+  const isServerless = process.env.VERCEL === '1';
+  const maxRetries = isServerless ? Math.min(configuredRetries, 1) : configuredRetries;
   const retryDelay = parseInt(process.env.EMAIL_RETRY_DELAY_SECONDS || '5') * 1000;
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
@@ -45,6 +47,7 @@ const sendEmail = async (to, subject, html) => {
         to,
         subject,
         html,
+        attachments,
       });
       console.log(`✅ Email sent to ${to} (attempt ${attempt}): ${info.messageId}`);
       return { success: true, messageId: info.messageId };

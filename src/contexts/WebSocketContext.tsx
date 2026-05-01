@@ -16,9 +16,11 @@ export const WebSocketProvider: React.FC<{ children: ReactNode }> = ({ children 
   const subscribers = useRef<SubscriberMap>(new Map());
   const ws = useRef<WebSocket | null>(null);
   const reconnectTimeout = useRef<number | null>(null);
+  const isWebSocketEnabled = import.meta.env.VITE_ENABLE_WEBSOCKET === 'true';
 
   const connect = useCallback(() => {
     if (!user) return;
+    if (!isWebSocketEnabled) return;
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const host = window.location.host;
@@ -61,7 +63,7 @@ export const WebSocketProvider: React.FC<{ children: ReactNode }> = ({ children 
     } catch (err) {
       reconnectTimeout.current = window.setTimeout(connect, 5000);
     }
-  }, [user]);
+  }, [isWebSocketEnabled, user]);
 
   useEffect(() => {
     connect();

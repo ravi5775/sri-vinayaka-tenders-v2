@@ -19,6 +19,43 @@ A full-stack loan management application for tracking loans, investors, and repa
 - **Database**: PostgreSQL + MongoDB Atlas (backup/restore)
 - **Authentication**: JWT-based auth
 
+## Vercel Deployment (Frontend + API)
+
+This repository now supports Vercel deployment with:
+
+- Vite frontend served from `dist`
+- Backend Express API via Vercel Function at `/api/index.js`
+- PostgreSQL via `DATABASE_URL`
+
+### Required environment variables
+
+Set these in Vercel Project Settings:
+
+- `DATABASE_URL`
+- `DIRECT_URL` (for Prisma migrations)
+- `JWT_SECRET`
+- `CORS_ORIGIN`
+- `FRONTEND_URL`
+- `NODE_ENV=production`
+
+Optional:
+
+- `VITE_API_URL=/api`
+- `VITE_ENABLE_WEBSOCKET=false`
+- `MONGODB_URI` or `MONGO_URI`
+
+### Build behavior on Vercel
+
+- `vercel.json` uses `npm run vercel-build`
+- `vercel-build` installs backend deps, generates Prisma client, and builds frontend
+
+### PostgreSQL migration command
+
+```sh
+cd backend
+npm run prisma:migrate
+```
+
 ## Getting Started
 
 ### Prerequisites

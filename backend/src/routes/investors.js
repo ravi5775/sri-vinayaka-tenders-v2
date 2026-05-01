@@ -2,6 +2,10 @@ const express = require('express');
 const { pool } = require('../config/database');
 const { authenticate } = require('../middleware/auth');
 const { body, param, validationResult } = require('express-validator');
+const { recordTransaction } = require('../services/backupService');
+const { sendHighPaymentAlert } = require('../services/highPaymentAlertService');
+
+const HIGH_PAYMENT_THRESHOLD = 30000; // ₹30,000
 
 const router = express.Router();
 router.use(authenticate);
@@ -39,15 +43,16 @@ router.get('/', async (req, res) => {
     const limit = Math.min(500, Math.max(1, parseInt(req.query.limit) || 0));
     const usePagination = req.query.page || req.query.limit;
 
+    // Note: All admins see all investors (no user_id filter)
     let invResult;
     if (usePagination) {
       const offset = (page - 1) * limit;
       invResult = await pool.query(
-        'SELECT * FROM investors WHERE user_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3',
-        [req.user.id, limit, offset]
+        'SELECT * FROM investors ORDER BY created_at DESC LIMIT $1 OFFSET $2',
+        [limit, offset]
       );
     } else {
-      invResult = await pool.query('SELECT * FROM investors WHERE user_id = $1 ORDER BY created_at DESC', [req.user.id]);
+      invResult = await pool.query('SELECT * FROM investors ORDER BY created_at DESC');
     }
 
     // Fetch payments only for returned investors
@@ -71,7 +76,7 @@ router.get('/', async (req, res) => {
     const investors = invResult.rows.map(row => mapInvestor(row, payMap[row.id] || []));
 
     if (usePagination) {
-      const countResult = await pool.query('SELECT COUNT(*) FROM investors WHERE user_id = $1', [req.user.id]);
+      const countResult = await pool.query('SELECT COUNT(*) FROM investors');
       const total = parseInt(countResult.rows[0].count);
       res.json({ investors, total, page, limit, totalPages: Math.ceil(total / limit) });
     } else {
@@ -120,10 +125,11 @@ router.put('/:id', [
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
   try {
     const { name, investmentAmount, investmentType, profitRate, startDate, status } = req.body;
+    // All admins can update any investor (no user_id restriction)
     const result = await pool.query(
-      `UPDATE investors SET name=$1, investment_amount=$2, investment_type=$3, profit_rate=$4, start_date=$5, status=$6
-       WHERE id=$7 AND user_id=$8 RETURNING *`,
-      [name, investmentAmount, investmentType, profitRate, startDate, status, req.params.id, req.user.id]
+      `UPDATE investors SET name=$1, investment_amount=$2, investment_type=$3, profit_rate=$4, start_date=$5, status=$6, updated_at=NOW()
+       WHERE id=$7 RETURNING *`,
+      [name, investmentAmount, investmentType, profitRate, startDate, status, req.params.id]
     );
     if (result.rows.length === 0) return res.status(404).json({ error: 'Investor not found' });
     res.json(mapInvestor(result.rows[0]));
@@ -140,8 +146,8 @@ router.delete('/:id', [param('id').isUUID()], async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    // Verify investor belongs to current user
-    const invCheck = await client.query('SELECT id FROM investors WHERE id = $1 AND user_id = $2', [req.params.id, req.user.id]);
+    // Verify investor exists (all admins can delete any investor)
+    const invCheck = await client.query('SELECT id FROM investors WHERE id = $1', [req.params.id]);
     if (invCheck.rows.length === 0) {
       await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Investor not found' });
@@ -172,7 +178,8 @@ router.post('/:investorId/payments', [
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
   try {
-    const invCheck = await pool.query('SELECT id FROM investors WHERE id = $1 AND user_id = $2', [req.params.investorId, req.user.id]);
+    // Verify investor exists (all admins can add payments to any investor)
+    const invCheck = await pool.query('SELECT id FROM investors WHERE id = $1', [req.params.investorId]);
     if (invCheck.rows.length === 0) return res.status(404).json({ error: 'Investor not found' });
 
     const { amount, payment_date, payment_type, remarks } = req.body;
@@ -181,6 +188,45 @@ router.post('/:investorId/payments', [
       [req.params.investorId, req.user.id, amount, payment_date || new Date().toISOString().split('T')[0], payment_type, remarks || null]
     );
     res.status(201).json(mapPayment(result.rows[0]));
+
+    // ── Record transaction for backup trigger (fire-and-forget) ─────────
+    setImmediate(async () => {
+      try {
+        await recordTransaction();
+      } catch (err) {
+        console.error('Error recording transaction for backup:', err.message);
+      }
+    });
+
+    // ── High-payment alert for investor payments (fire-and-forget, non-blocking) ──
+    if (Number(amount) >= HIGH_PAYMENT_THRESHOLD) {
+      setImmediate(async () => {
+        try {
+          const userRes = await pool.query(
+            'SELECT email, display_name FROM users WHERE id = $1',
+            [req.user.id]
+          );
+          const payingUser = userRes.rows[0] || {};
+
+          // Get investor name
+          const invRes = await pool.query('SELECT name FROM investors WHERE id = $1', [req.params.investorId]);
+          const investorName = invRes.rows[0]?.name || 'Unknown Investor';
+
+          // Send high payment alert to all admins
+          await sendHighPaymentAlert({
+            amount,
+            adminEmail: payingUser.email,
+            adminName: payingUser.display_name || payingUser.email.split('@')[0],
+            loanId: req.params.investorId,
+            customerName: investorName,
+            loanType: `Investor Payment (${payment_type})`,
+            timestamp: new Date().toISOString(),
+          });
+        } catch (err) {
+          console.error('Error sending high payment alert for investor payment:', err.message);
+        }
+      });
+    }
   } catch (err) {
     console.error('Add investor payment error:', err);
     res.status(500).json({ error: 'Internal server error' });
@@ -190,8 +236,8 @@ router.post('/:investorId/payments', [
 // PUT /api/investors/:investorId/payments/:payId
 router.put('/:investorId/payments/:payId', async (req, res) => {
   try {
-    // Verify investor belongs to current user
-    const invCheck = await pool.query('SELECT id FROM investors WHERE id = $1 AND user_id = $2', [req.params.investorId, req.user.id]);
+    // Verify investor exists (all admins can update any payment)
+    const invCheck = await pool.query('SELECT id FROM investors WHERE id = $1', [req.params.investorId]);
     if (invCheck.rows.length === 0) return res.status(404).json({ error: 'Investor not found' });
     
     const { amount, payment_date, payment_type, remarks } = req.body;
@@ -215,12 +261,12 @@ router.put('/:investorId/payments/:payId', async (req, res) => {
 // DELETE /api/investors/:investorId/payments/:payId
 router.delete('/:investorId/payments/:payId', async (req, res) => {
   try {
-    // Verify investor belongs to current user AND payment belongs to that investor
+    // Verify payment belongs to that investor (all admins can delete any payment)
     const paymentCheck = await pool.query(
       `SELECT ip.id FROM investor_payments ip
        JOIN investors i ON ip.investor_id = i.id
-       WHERE ip.id = $1 AND i.id = $2 AND i.user_id = $3`,
-      [req.params.payId, req.params.investorId, req.user.id]
+       WHERE ip.id = $1 AND i.id = $2`,
+      [req.params.payId, req.params.investorId]
     );
     if (paymentCheck.rows.length === 0) {
       return res.status(404).json({ error: 'Payment not found or does not belong to this investor' });

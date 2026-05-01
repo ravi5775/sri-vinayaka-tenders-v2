@@ -1,0 +1,2 @@
+-- Baseline migration for Vercel PostgreSQL.
+-- Existing projects can apply backend/database/schema.sql once, then use Prisma migrations for subsequent changes.
