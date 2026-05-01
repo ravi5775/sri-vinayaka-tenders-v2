@@ -1,0 +1,146 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model users {
+  id                 String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email              String                  @unique
+  password_hash      String
+  display_name       String?
+  role               String                  @default("admin")
+  active_token_hash  String?
+  device_id          String?
+  last_login_at      DateTime?               @db.Timestamptz(6)
+  is_locked          Boolean                 @default(false)
+  locked_until       DateTime?               @db.Timestamptz(6)
+  failed_attempts    Int                     @default(0)
+  created_at         DateTime                @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime                @default(now()) @db.Timestamptz(6)
+  loans              loans[]
+  investors          investors[]
+  transactions       transactions[]
+  investor_payments  investor_payments[]
+  notifications      notifications[]
+  login_history      login_history[]
+  password_reset_tokens password_reset_tokens[]
+
+  @@index([email], map: "idx_users_email")
+}
+
+model loans {
+  id            String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id       String          @db.Uuid
+  customer_name String
+  phone         String?
+  loan_type     String
+  loan_amount   Decimal         @default(0) @db.Decimal
+  given_amount  Decimal         @default(0) @db.Decimal
+  interest_rate Decimal?        @db.Decimal
+  duration_value Decimal?       @db.Decimal
+  duration_unit String?
+  start_date    DateTime        @default(now()) @db.Date
+  status        String          @default("Active")
+  created_at    DateTime        @default(now()) @db.Timestamptz(6)
+  updated_at    DateTime        @default(now()) @db.Timestamptz(6)
+  users         users           @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  transactions  transactions[]
+  notifications notifications[]
+
+  @@index([user_id], map: "idx_loans_user_id")
+  @@index([status], map: "idx_loans_status")
+}
+
+model transactions {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  loan_id      String    @db.Uuid
+  user_id      String    @db.Uuid
+  amount       Decimal   @default(0) @db.Decimal
+  payment_date DateTime  @default(now()) @db.Date
+  payment_type String?
+  created_at   DateTime  @default(now()) @db.Timestamptz(6)
+  loans        loans     @relation(fields: [loan_id], references: [id], onDelete: Cascade)
+  users        users     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([loan_id], map: "idx_transactions_loan_id")
+  @@index([user_id], map: "idx_transactions_user_id")
+}
+
+model investors {
+  id                String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id           String             @db.Uuid
+  name              String
+  investment_amount Decimal            @default(0) @db.Decimal
+  investment_type   String
+  profit_rate       Decimal            @default(0) @db.Decimal
+  start_date        DateTime           @default(now()) @db.Date
+  status            String             @default("On Track")
+  created_at        DateTime           @default(now()) @db.Timestamptz(6)
+  updated_at        DateTime           @default(now()) @db.Timestamptz(6)
+  users             users              @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  investor_payments investor_payments[]
+
+  @@index([user_id], map: "idx_investors_user_id")
+}
+
+model investor_payments {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  investor_id String    @db.Uuid
+  user_id     String    @db.Uuid
+  amount      Decimal   @default(0) @db.Decimal
+  payment_date DateTime @default(now()) @db.Date
+  payment_type String
+  remarks      String?
+  created_at   DateTime @default(now()) @db.Timestamptz(6)
+  investors    investors @relation(fields: [investor_id], references: [id], onDelete: Cascade)
+  users        users     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([investor_id], map: "idx_investor_payments_investor_id")
+  @@index([user_id], map: "idx_investor_payments_user_id")
+}
+
+model notifications {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id    String    @db.Uuid
+  loan_id    String?   @db.Uuid
+  title      String
+  message    String
+  is_read    Boolean   @default(false)
+  created_at DateTime  @default(now()) @db.Timestamptz(6)
+  users      users     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  loans      loans?    @relation(fields: [loan_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id], map: "idx_notifications_user_id")
+  @@index([user_id, is_read], map: "idx_notifications_is_read")
+}
+
+model login_history {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id    String   @db.Uuid
+  email      String
+  ip_address String?  @default("unknown")
+  user_agent String?  @default("unknown")
+  device_id  String?
+  success    Boolean  @default(true)
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  users      users    @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id], map: "idx_login_history_user_id")
+}
+
+model password_reset_tokens {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id    String   @db.Uuid
+  token_hash String
+  expires_at DateTime @db.Timestamptz(6)
+  used       Boolean  @default(false)
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  users      users    @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id], map: "idx_password_reset_tokens_user_id")
+}

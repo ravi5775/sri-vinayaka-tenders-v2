@@ -8,12 +8,14 @@ export default defineConfig(({ mode }) => ({
     host: "::",
     port: 8080,
     hmr: { overlay: false },
-    proxy: {
-      '/api': {
-        target: 'http://localhost:3001',
-        changeOrigin: true,
-      },
-    },
+    proxy: mode === 'development' && process.env.VITE_DEV_API_PROXY_TARGET
+      ? {
+          '/api': {
+            target: process.env.VITE_DEV_API_PROXY_TARGET,
+            changeOrigin: true,
+          },
+        }
+      : undefined,
   },
   plugins: [
     react(),

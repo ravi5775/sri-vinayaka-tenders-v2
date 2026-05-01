@@ -1,6 +1,15 @@
 import { Admin, Loan, Transaction, Investor, InvestorPayment, Notification, LoginHistory } from '../types';
 
-const API_BASE = '/api';
+const API_BASE = import.meta.env.VITE_API_URL || '/api';
+
+const parseErrorPayload = async (response: Response) => {
+  const contentType = response.headers.get('content-type') || '';
+  if (contentType.includes('application/json')) {
+    return response.json().catch(() => ({}));
+  }
+  const text = await response.text().catch(() => '');
+  return text ? { message: text } : {};
+};
 
 const authFetch = async (url: string, options: RequestInit = {}) => {
   const token = localStorage.getItem('authToken');
@@ -19,7 +28,7 @@ const authFetch = async (url: string, options: RequestInit = {}) => {
   });
 
   if (response.status === 401) {
-    const errorData = await response.json().catch(() => ({}));
+    const errorData = await parseErrorPayload(response);
     localStorage.removeItem('authToken');
     if (!window.location.pathname.includes('/login')) {
       // Show alert for session replaced
@@ -32,7 +41,7 @@ const authFetch = async (url: string, options: RequestInit = {}) => {
   }
 
   if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
+    const errorData = await parseErrorPayload(response);
     if (response.status === 409 && errorData.code === 'SESSION_CONFLICT') {
       const err: any = new Error(errorData.message || 'Active session exists on another device');
       err.code = 'SESSION_CONFLICT';
