@@ -110,6 +110,7 @@ router.get('/backup-schedule', async (req, res) => {
     res.json({
       message: 'Backup schedule retrieved successfully',
       schedule,
+      senderEmail: process.env.SMTP_FROM_EMAIL || process.env.SMTP_USERNAME || null,
     });
   } catch (err) {
     console.error('Get backup schedule error:', err);
@@ -131,6 +132,7 @@ router.put('/backup-schedule', [
     res.json({
       message: `Daily backup email schedule updated to ${schedule.label}`,
       schedule,
+      senderEmail: process.env.SMTP_FROM_EMAIL || process.env.SMTP_USERNAME || null,
     });
   } catch (err) {
     console.error('Update backup schedule error:', err);

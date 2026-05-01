@@ -49,6 +49,8 @@ const AdminManagementModal: React.FC<AdminManagementModalProps> = ({ isOpen, onC
 
   const [adminUsers, setAdminUsers] = useState<AdminUser[]>([]);
   const [isLoadingAdmins, setIsLoadingAdmins] = useState(false);
+  const [backupScheduleLabel, setBackupScheduleLabel] = useState<string | null>(null);
+  const [backupSenderEmail, setBackupSenderEmail] = useState<string | null>(null);
   const [editTarget, setEditTarget] = useState<AdminUser | null>(null);
   const [editEmail, setEditEmail] = useState('');
   const [isSavingEmail, setIsSavingEmail] = useState(false);
@@ -61,8 +63,19 @@ const AdminManagementModal: React.FC<AdminManagementModalProps> = ({ isOpen, onC
     if (isOpen) {
       fetchLoginHistory();
       fetchAdminUsers();
+      fetchBackupScheduleInfo();
     }
   }, [isOpen]);
+
+  const fetchBackupScheduleInfo = async () => {
+    try {
+      const res = await apiService.getBackupSchedule();
+      if (res?.schedule?.label) setBackupScheduleLabel(res.schedule.label);
+      if (res?.senderEmail) setBackupSenderEmail(res.senderEmail);
+    } catch (err: any) {
+      console.error('Failed to fetch backup schedule info:', err?.message || err);
+    }
+  };
 
   const fetchAdminUsers = async () => {
     setIsLoadingAdmins(true);
@@ -234,7 +247,16 @@ const AdminManagementModal: React.FC<AdminManagementModalProps> = ({ isOpen, onC
               <span className="text-xs text-muted-foreground font-medium">{adminUsers.length} account{adminUsers.length !== 1 ? 's' : ''}</span>
             </div>
             <p className="text-xs text-muted-foreground">
-              Daily 8 PM backup emails are sent to every admin email listed here.
+              {backupScheduleLabel ? (
+                <>
+                  Daily backup emails are sent at <strong>{backupScheduleLabel}</strong> to every admin listed here.
+                </>
+              ) : (
+                <>Daily backup emails are sent to every admin listed here.</>
+              )}
+              {backupSenderEmail ? (
+                <div className="mt-1 text-xs text-muted-foreground">Sent from: <strong>{backupSenderEmail}</strong></div>
+              ) : null}
             </p>
             {isLoadingAdmins ? (
               <div className="flex justify-center py-6"><Loader2 className="animate-spin h-6 w-6 text-primary" /></div>
