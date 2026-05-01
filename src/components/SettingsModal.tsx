@@ -1,5 +1,5 @@
-import React, { useRef, useState } from 'react';
-import { X, Settings as SettingsIcon, Shield, Download, Upload, Loader2, Cloud, Database } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { X, Settings as SettingsIcon, Shield, Download, Upload, Loader2, Cloud, Database, Clock3 } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useLogo } from '../contexts/LogoContext';
 import { useLoans } from '../contexts/LoanContext';
@@ -26,8 +26,32 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
   const [isBackingUp, setIsBackingUp] = useState(false);
   const [isBackingUpMongo, setIsBackingUpMongo] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
+  const [isLoadingSchedule, setIsLoadingSchedule] = useState(false);
+  const [isSavingSchedule, setIsSavingSchedule] = useState(false);
+  const [dailyBackupTime, setDailyBackupTime] = useState('20:00');
   const [pendingRestoreData, setPendingRestoreData] = useState<any>(null);
   const [showRestoreConfirm, setShowRestoreConfirm] = useState(false);
+
+  const loadBackupSchedule = async () => {
+    setIsLoadingSchedule(true);
+    try {
+      const result = await apiService.getBackupSchedule();
+      if (result?.schedule?.time24h) {
+        setDailyBackupTime(result.schedule.time24h);
+      }
+    } catch (err) {
+      console.error('Failed to load backup schedule:', err);
+    } finally {
+      setIsLoadingSchedule(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isOpen) {
+      loadBackupSchedule();
+    }
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   const handleLogoUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -60,7 +84,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
 
       // Upload to Google Drive via backend API (NOT direct to Apps Script)
       // Backend makes the external call, avoiding CSP restrictions on frontend
-      const result = await apiService.backupToGoogleDrive();
+      await apiService.backupToGoogleDrive();
 
       // Also download locally as a fallback
       const blob = new Blob([jsonString], { type: 'application/json' });
@@ -100,6 +124,18 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
       showToast(err.message || 'Failed to backup to MongoDB Atlas.', 'error');
     } finally {
       setIsBackingUpMongo(false);
+    }
+  };
+
+  const handleSaveBackupSchedule = async () => {
+    setIsSavingSchedule(true);
+    try {
+      const result = await apiService.updateBackupSchedule(dailyBackupTime);
+      showToast(result?.message || 'Daily backup schedule updated successfully!', 'success');
+    } catch (err: any) {
+      showToast(err.message || 'Failed to update daily backup schedule.', 'error');
+    } finally {
+      setIsSavingSchedule(false);
     }
   };
 
@@ -176,6 +212,61 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
             <h3 className="font-bold text-foreground text-sm flex items-center gap-2"><Shield size={16} className="text-primary" />{t('Admin Management')}</h3>
             <p className="text-xs text-muted-foreground">{t('Manage admin users and passwords.')}</p>
             <button onClick={() => setIsAdminModalOpen(true)} className="btn btn-secondary text-xs">{t('Manage Admins')}</button>
+          </div>
+
+          {/* Daily Backup Schedule */}
+          <div className="border-t border-border/50 pt-6 space-y-3">
+            <h3 className="font-bold text-foreground text-sm flex items-center gap-2">
+              <Clock3 size={16} className="text-primary" />
+              Daily Backup Email Time
+            </h3>
+            <p className="text-xs text-muted-foreground">
+              Choose when the daily backup mail should run. The email will go to every admin account listed in Admin Management.
+            </p>
+
+            {isLoadingSchedule ? (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Loader2 size={14} className="animate-spin" /> Loading schedule...
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-semibold text-foreground mb-1.5">Backup time (IST)</label>
+                  <input
+                    type="time"
+                    value={dailyBackupTime}
+                    onChange={e => setDailyBackupTime(e.target.value)}
+                    className="w-full px-4 py-2.5 border border-input rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary bg-background text-sm transition-all duration-200"
+                  />
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setDailyBackupTime('20:00')}
+                    className="px-3 py-1.5 rounded-lg border border-border/50 text-xs font-medium hover:bg-muted transition-colors"
+                  >
+                    8:00 PM
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDailyBackupTime('08:00')}
+                    className="px-3 py-1.5 rounded-lg border border-border/50 text-xs font-medium hover:bg-muted transition-colors"
+                  >
+                    8:00 AM
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveBackupSchedule}
+                    disabled={isSavingSchedule}
+                    className="btn btn-primary text-xs"
+                  >
+                    {isSavingSchedule ? <Loader2 size={14} className="animate-spin mr-2" /> : null}
+                    Save Schedule
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Data Management */}

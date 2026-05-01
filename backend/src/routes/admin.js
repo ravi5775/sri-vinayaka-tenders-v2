@@ -5,6 +5,10 @@ const { pool } = require('../config/database');
 const { authenticate, requireAdmin } = require('../middleware/auth');
 const { sendEmail } = require('../config/email');
 const { adminPasswordResetTemplate, welcomeUserTemplate } = require('../templates/emailTemplates');
+const {
+  getCurrentDailyBackupSchedule,
+  updateDailyBackupSchedule,
+} = require('../config/dailyBackupScheduler');
 const { body, param, validationResult } = require('express-validator');
 
 const router = express.Router();
@@ -96,6 +100,41 @@ router.get('/users', async (req, res) => {
   } catch (err) {
     console.error('List admins error:', err);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/admin/backup-schedule - Current daily backup email time
+router.get('/backup-schedule', async (req, res) => {
+  try {
+    const schedule = await getCurrentDailyBackupSchedule();
+    res.json({
+      message: 'Backup schedule retrieved successfully',
+      schedule,
+    });
+  } catch (err) {
+    console.error('Get backup schedule error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// PUT /api/admin/backup-schedule - Update daily backup email time
+router.put('/backup-schedule', [
+  body('time24h').trim().matches(/^([01]\d|2[0-3]):[0-5]\d$/).withMessage('Time must be in HH:MM 24-hour format'),
+], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
+  try {
+    const { time24h } = req.body;
+    await updateDailyBackupSchedule(time24h);
+    const schedule = await getCurrentDailyBackupSchedule();
+    res.json({
+      message: `Daily backup email schedule updated to ${schedule.label}`,
+      schedule,
+    });
+  } catch (err) {
+    console.error('Update backup schedule error:', err);
+    res.status(500).json({ error: err.message || 'Internal server error' });
   }
 });
 

@@ -7,8 +7,67 @@ const {
 } = require('../services/backupService');
 const { sendEmail } = require('./email');
 const { pool } = require('./database');
+const {
+  getDailyBackupTime,
+  setDailyBackupTime,
+  DEFAULT_DAILY_BACKUP_TIME,
+} = require('./appSettings');
 
 let dailyBackupJob = null;
+let scheduledDailyBackupTime = DEFAULT_DAILY_BACKUP_TIME;
+
+const isValidTime24h = (value) => /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
+
+const parseTime24h = (value) => {
+  if (!isValidTime24h(value)) return null;
+  const [hour, minute] = value.split(':').map(Number);
+  return { hour, minute };
+};
+
+const formatBackupTimeLabel = (value) => {
+  const parsed = parseTime24h(value);
+  if (!parsed) return value;
+  const hour12 = parsed.hour % 12 || 12;
+  const period = parsed.hour >= 12 ? 'PM' : 'AM';
+  return `${hour12.toString().padStart(2, '0')}:${parsed.minute.toString().padStart(2, '0')} ${period} IST`;
+};
+
+const buildBackupRule = (value) => {
+  const parsed = parseTime24h(value);
+  if (!parsed) {
+    throw new Error(`Invalid backup time '${value}'. Expected HH:MM in 24-hour format.`);
+  }
+
+  const rule = new schedule.RecurrenceRule();
+  rule.tz = 'Asia/Kolkata';
+  rule.hour = parsed.hour;
+  rule.minute = parsed.minute;
+  rule.second = 0;
+  return rule;
+};
+
+const scheduleDailyBackupJob = async () => {
+  if (dailyBackupJob) {
+    dailyBackupJob.cancel();
+    dailyBackupJob = null;
+  }
+
+  scheduledDailyBackupTime = await getDailyBackupTime();
+  const jobRule = buildBackupRule(scheduledDailyBackupTime);
+
+  dailyBackupJob = schedule.scheduleJob(jobRule, async () => {
+    console.log(`🕐 Daily backup job triggered at ${formatBackupTimeLabel(scheduledDailyBackupTime)}...`);
+
+    try {
+      await runDailyBackupReport();
+    } catch (err) {
+      console.error('❌ Daily backup job error:', err.message);
+    }
+  });
+
+  console.log(`✅ Daily backup job scheduled for ${formatBackupTimeLabel(scheduledDailyBackupTime)}`);
+  return scheduledDailyBackupTime;
+};
 
 const runDailyBackupReport = async () => {
   // Fetch backup data
@@ -34,11 +93,14 @@ const runDailyBackupReport = async () => {
 
   // Get all admin emails
   const adminsResult = await pool.query(
-    `SELECT DISTINCT u.id, u.email, COALESCE(p.display_name, split_part(u.email, '@', 1)) AS display_name
+    `SELECT DISTINCT ON (LOWER(u.email))
+      u.id,
+      LOWER(u.email) AS email,
+      COALESCE(p.display_name, split_part(LOWER(u.email), '@', 1)) AS display_name
      FROM users u
      LEFT JOIN profiles p ON u.id = p.id
      WHERE u.role = $1 AND u.email IS NOT NULL AND u.email <> ''
-     ORDER BY u.created_at`,
+     ORDER BY LOWER(u.email), u.created_at`,
     ['admin']
   );
 
@@ -190,24 +252,35 @@ const dailyBackupEmailTemplate = (adminName, backupData, backupTime) => {
 /**
  * Start daily backup job at 8 PM IST
  */
-const startDailyBackupJob = () => {
+const startDailyBackupJob = async () => {
   try {
-    // Schedule for 8 PM IST every day (13:30 UTC = 8 PM IST during daylight)
-    // Using cron: '0 20 * * *' = 8 PM every day in local timezone
-    dailyBackupJob = schedule.scheduleJob('0 20 * * *', async () => {
-      console.log('🕐 Daily backup job triggered at 8 PM...');
-      
-      try {
-        await runDailyBackupReport();
-      } catch (err) {
-        console.error('❌ Daily backup job error:', err.message);
-      }
-    });
-
-    console.log('✅ Daily backup job scheduled for 8:00 PM IST');
+    await scheduleDailyBackupJob();
   } catch (err) {
     console.error('Failed to schedule daily backup job:', err);
   }
+};
+
+const restartDailyBackupJob = async () => {
+  return scheduleDailyBackupJob();
+};
+
+const getCurrentDailyBackupSchedule = async () => {
+  const time24h = await getDailyBackupTime();
+  const parsed = parseTime24h(time24h) || parseTime24h(DEFAULT_DAILY_BACKUP_TIME);
+  return {
+    time24h,
+    label: formatBackupTimeLabel(time24h),
+    cron: parsed ? `0 ${parsed.minute} ${parsed.hour} * * *` : null,
+  };
+};
+
+const updateDailyBackupSchedule = async (time24h) => {
+  if (!isValidTime24h(time24h)) {
+    throw new Error('Time must be in HH:MM 24-hour format');
+  }
+
+  await setDailyBackupTime(time24h);
+  return restartDailyBackupJob();
 };
 
 /**
@@ -224,4 +297,7 @@ module.exports = {
   startDailyBackupJob,
   stopDailyBackupJob,
   runDailyBackupReport,
+  restartDailyBackupJob,
+  getCurrentDailyBackupSchedule,
+  updateDailyBackupSchedule,
 };

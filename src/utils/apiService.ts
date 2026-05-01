@@ -109,6 +109,12 @@ const apiService = {
   updateAdminEmail: async (id: string, email: string): Promise<any> => {
     return authFetch(`/admin/users/${id}/email`, { method: 'PUT', body: JSON.stringify({ email }) });
   },
+  getBackupSchedule: async (): Promise<any> => {
+    return authFetch('/admin/backup-schedule');
+  },
+  updateBackupSchedule: async (time24h: string): Promise<any> => {
+    return authFetch('/admin/backup-schedule', { method: 'PUT', body: JSON.stringify({ time24h }) });
+  },
   deleteAdmin: async (id: string): Promise<void> => {
     return authFetch(`/admin/users/${id}`, { method: 'DELETE' });
   },

@@ -31,7 +31,7 @@ const startServer = async () => {
   }
 
   // Start daily backup email job
-  startDailyBackupJob();
+  await startDailyBackupJob();
 
   app.listen(PORT, () => {
     console.log(`\nSri Vinayaka backend running on http://localhost:${PORT}`);

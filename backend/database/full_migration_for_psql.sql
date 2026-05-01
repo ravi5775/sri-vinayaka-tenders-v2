@@ -58,6 +58,15 @@ CREATE TABLE IF NOT EXISTS public.profiles (
 );
 
 -- ============================================================
+-- APP SETTINGS TABLE
+-- ============================================================
+CREATE TABLE IF NOT EXISTS public.app_settings (
+  key        TEXT        PRIMARY KEY,
+  value      TEXT        NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- ============================================================
 -- PASSWORD RESET TOKENS TABLE
 -- ============================================================
 CREATE TABLE IF NOT EXISTS public.password_reset_tokens (
