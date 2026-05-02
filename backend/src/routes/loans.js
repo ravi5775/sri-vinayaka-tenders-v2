@@ -1,4 +1,5 @@
 const express = require('express');
+const fs = require('fs');
 const { pool } = require('../config/database');
 const { authenticate } = require('../middleware/auth');
 const { sendEmail } = require('../config/email');
@@ -12,6 +13,40 @@ const HIGH_PAYMENT_THRESHOLD = 30000; // ₹30,000
 
 const router = express.Router();
 router.use(authenticate);
+
+const resolveChromeExecutablePath = () => {
+  const candidatePaths = [
+    process.env.PUPPETEER_EXECUTABLE_PATH,
+    process.env.CHROME_PATH,
+    puppeteer.executablePath(),
+    '/usr/bin/google-chrome-stable',
+    '/usr/bin/google-chrome',
+    '/usr/bin/chromium',
+    '/usr/bin/chromium-browser',
+  ].filter(Boolean);
+
+  for (const executablePath of candidatePaths) {
+    if (fs.existsSync(executablePath)) {
+      return executablePath;
+    }
+  }
+
+  return null;
+};
+
+const launchPdfBrowser = async () => {
+  const executablePath = resolveChromeExecutablePath();
+  const launchOptions = {
+    headless: 'new',
+    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+  };
+
+  if (executablePath) {
+    launchOptions.executablePath = executablePath;
+  }
+
+  return puppeteer.launch(launchOptions);
+};
 
 // ─── Helper: Map DB row to frontend Loan shape ─────
 const mapLoan = (row, transactions = []) => ({
@@ -327,16 +362,22 @@ router.get('/:loanId/receipt-pdf', [ param('loanId').isUUID() ], async (req, res
     });
 
     // Launch puppeteer and render PDF
-    const browser = await puppeteer.launch({ args: ['--no-sandbox', '--disable-setuid-sandbox'] });
-    const page = await browser.newPage();
-    await page.setContent(html, { waitUntil: 'networkidle0' });
-    const pdfBuffer = await page.pdf({ format: 'A4', printBackground: true, margin: { top: 0, right: 0, bottom: 0, left: 0 } });
-    await browser.close();
+    const browser = await launchPdfBrowser();
+    try {
+      const page = await browser.newPage();
+      await page.setContent(html, { waitUntil: 'load' });
+      const pdfBuffer = await page.pdf({ format: 'A4', printBackground: true, margin: { top: 0, right: 0, bottom: 0, left: 0 } });
 
-    const filename = `Loan-Receipt-${customerName.replace(/[^a-z0-9_-]/gi, '_')}.pdf`;
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-    res.send(pdfBuffer);
+      const filename = `Loan-Receipt-${customerName.replace(/[^a-z0-9_-]/gi, '_')}.pdf`;
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.send(pdfBuffer);
+      return;
+    } finally {
+      await browser.close().catch((closeErr) => {
+        console.error('PDF browser close error:', closeErr);
+      });
+    }
   } catch (err) {
     console.error('Generate PDF error:', err);
     res.status(500).json({ error: 'Failed to generate PDF' });
