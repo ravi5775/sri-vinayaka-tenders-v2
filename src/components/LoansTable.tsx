@@ -4,7 +4,8 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { useLoans } from '../contexts/LoanContext';
 import { useNavigate } from 'react-router-dom';
 import { calculateBalance, getLoanStatus, calculateLoanProfit, calculateNextDueDate, calculateInterestAmount } from '../utils/planCalculations';
-import { Eye, Edit, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
+import { Eye, Edit, Trash2, ChevronDown, ChevronUp, Printer } from 'lucide-react';
+import apiService from '../utils/apiService';
 import PaymentModal from './PaymentModal';
 import ConfirmationModal from './ConfirmationModal';
 import { sanitize } from '../utils/sanitizer';
@@ -74,6 +75,24 @@ const LoansTable: React.FC<LoansTableProps> = ({ loans }) => {
   const numSelected = selectedIds.size;
   const numLoans = loans.length;
 
+  const handleDownloadPdf = async (loanId: string, customerName?: string) => {
+    try {
+      const blob = await apiService.downloadLoanReceiptPdf(loanId);
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const safeName = (customerName || 'loan').replace(/[^a-z0-9_-]/gi, '_');
+      a.download = `Loan-Receipt-${safeName}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err: any) {
+      console.error('Download PDF error', err);
+      alert(err.message || 'Failed to download PDF');
+    }
+  };
+
   return (
     <>
       {numSelected > 0 && (
@@ -126,6 +145,7 @@ const LoansTable: React.FC<LoansTableProps> = ({ loans }) => {
                 <td className="px-5 py-4 whitespace-nowrap text-center text-sm font-medium">
                   <div className="flex items-center justify-center gap-1">
                     <button onClick={() => setSelectedLoan(loan)} className="p-2 rounded-xl text-primary hover:bg-primary/10 transition-colors duration-150" title={t('View/Pay')}><Eye size={18} /></button>
+                    <button onClick={() => handleDownloadPdf(loan.id, loan.customerName)} className="p-2 rounded-xl text-muted-foreground hover:bg-muted transition-colors duration-150" title={t('Export PDF')}><Printer size={18} /></button>
                     <button onClick={() => navigate(`/loan/edit/${loan.id}`)} className="p-2 rounded-xl text-success hover:bg-success/10 transition-colors duration-150" title={t('Edit')}><Edit size={18} /></button>
                   </div>
                 </td>
@@ -183,6 +203,9 @@ const LoansTable: React.FC<LoansTableProps> = ({ loans }) => {
                   <div className="flex items-center justify-around p-3 border-t border-border bg-muted/30">
                     <button onClick={() => setSelectedLoan(loan)} className="flex flex-col items-center gap-1 p-1.5 text-primary">
                       <Eye size={18} /><span className="text-[10px]">{t('View')}</span>
+                    </button>
+                    <button onClick={() => handleDownloadPdf(loan.id, loan.customerName)} className="flex flex-col items-center gap-1 p-1.5 text-muted-foreground">
+                      <Printer size={18} /><span className="text-[10px]">{t('Export')}</span>
                     </button>
                     <button onClick={() => navigate(`/loan/edit/${loan.id}`)} className="flex flex-col items-center gap-1 p-1.5 text-success">
                       <Edit size={18} /><span className="text-[10px]">{t('Edit')}</span>

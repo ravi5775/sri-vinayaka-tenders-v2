@@ -194,6 +194,21 @@ const apiService = {
   backupToGoogleDrive: async (): Promise<any> => {
     return authFetch('/backup/google-drive', { method: 'POST' });
   },
+  // PDF Receipts
+  downloadLoanReceiptPdf: async (loanId: string): Promise<Blob> => {
+    const token = localStorage.getItem('authToken');
+    const response = await fetch(`${API_BASE}/loans/${loanId}/receipt-pdf`, {
+      method: 'GET',
+      headers: {
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+      },
+    });
+    if (!response.ok) {
+      const text = await response.text().catch(() => 'Failed to download');
+      throw new Error(text || `Server Error: ${response.status}`);
+    }
+    return response.blob();
+  },
   sendBackupEmail: async (data: any): Promise<any> => {
     return authFetch('/backup/email', { method: 'POST', body: JSON.stringify(data) });
   },

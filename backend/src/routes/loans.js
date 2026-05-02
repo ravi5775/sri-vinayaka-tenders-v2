@@ -5,6 +5,7 @@ const { sendEmail } = require('../config/email');
 const { body, param, validationResult } = require('express-validator');
 const { recordTransaction } = require('../services/backupService');
 const { sendHighPaymentAlert } = require('../services/highPaymentAlertService');
+const puppeteer = require('puppeteer');
 
 const HIGH_PAYMENT_THRESHOLD = 30000; // ₹30,000
 
@@ -284,6 +285,95 @@ router.delete('/:loanId/transactions/:txnId', async (req, res) => {
   } catch (err) {
     console.error('Delete transaction error:', err);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/loans/:loanId/receipt-pdf  -> generate PDF receipt for loan
+router.get('/:loanId/receipt-pdf', [ param('loanId').isUUID() ], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+  try {
+    const loanId = req.params.loanId;
+    // Fetch loan
+    const loanRes = await pool.query('SELECT * FROM loans WHERE id = $1', [loanId]);
+    if (loanRes.rows.length === 0) return res.status(404).json({ error: 'Loan not found' });
+    const loanRow = loanRes.rows[0];
+    const txRes = await pool.query('SELECT * FROM transactions WHERE loan_id = $1 ORDER BY payment_date DESC', [loanId]);
+    const transactions = txRes.rows.map(t => ({
+      ...t,
+      amount: Number(t.amount),
+      payment_type: t.payment_type || null,
+    }));
+
+    const customerName = loanRow.customer_name || 'Loan';
+    const totalAmount = Number(loanRow.loan_amount || 0);
+    const amountPaid = transactions.reduce((s, t) => s + Number(t.amount || 0), 0);
+    const balance = totalAmount - amountPaid;
+
+    // Build HTML similar to frontend template
+    const rowsHtml = transactions.map(txn => `
+      <tr>
+        <td style="padding:8px;border-bottom:1px solid #e5e7eb">${new Date(txn.payment_date).toLocaleDateString()}</td>
+        <td style="padding:8px;border-bottom:1px solid #e5e7eb">₹${txn.amount.toLocaleString('en-IN')}</td>
+        <td style="padding:8px;border-bottom:1px solid #e5e7eb">${txn.payment_type ? (txn.payment_type === 'interest' ? 'Interest' : 'Principal') : '—'}</td>
+      </tr>
+    `).join('');
+
+    const html = `<!doctype html>
+    <html>
+      <head>
+        <meta charset="utf-8" />
+        <title>Loan Receipt - ${customerName}</title>
+        <style>
+          body{font-family: Arial, Helvetica, sans-serif; padding:20px; color:#111}
+          .header{display:flex;justify-content:space-between;align-items:center}
+          .summary{margin-top:16px;display:flex;gap:24px}
+          .stat{padding:8px}
+          table{width:100%;border-collapse:collapse;margin-top:16px}
+          th{background:#f3f4f6;padding:8px;text-align:left}
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <h1>Loan Details - ${customerName}</h1>
+          <div>${new Date().toLocaleString()}</div>
+        </div>
+        <div class="summary">
+          <div class="stat"><strong>Total Amount</strong><div>₹${totalAmount.toLocaleString('en-IN')}</div></div>
+          <div class="stat"><strong>Amount Paid</strong><div style="color:green">₹${amountPaid.toLocaleString('en-IN')}</div></div>
+          <div class="stat"><strong>Balance Due</strong><div style="color:#dc2626">₹${balance.toLocaleString('en-IN')}</div></div>
+        </div>
+
+        <h3 style="margin-top:20px">Transaction History</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Amount</th>
+              <th>Type</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rowsHtml}
+          </tbody>
+        </table>
+      </body>
+    </html>`;
+
+    // Launch puppeteer and render PDF
+    const browser = await puppeteer.launch({ args: ['--no-sandbox', '--disable-setuid-sandbox'] });
+    const page = await browser.newPage();
+    await page.setContent(html, { waitUntil: 'networkidle0' });
+    const pdfBuffer = await page.pdf({ format: 'A4', printBackground: true, margin: { top: '20mm', bottom: '20mm' } });
+    await browser.close();
+
+    const filename = `Loan-Receipt-${customerName.replace(/[^a-z0-9_-]/gi, '_')}.pdf`;
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(pdfBuffer);
+  } catch (err) {
+    console.error('Generate PDF error:', err);
+    res.status(500).json({ error: 'Failed to generate PDF' });
   }
 });
 

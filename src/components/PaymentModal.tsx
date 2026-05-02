@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { Transaction } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useLoans } from '../contexts/LoanContext';
-import { X, Edit, Trash2, Check } from 'lucide-react';
+import { X, Edit, Trash2, Check, Printer } from 'lucide-react';
 import { calculateTotalAmount, calculateAmountPaid, calculateBalance } from '../utils/planCalculations';
 import ConfirmationModal from './ConfirmationModal';
 import { sanitize } from '../utils/sanitizer';
@@ -61,6 +61,28 @@ const PaymentModal: React.FC<PaymentModalProps> = ({ loanId, onClose }) => {
     }
   };
 
+  const handleExportPDF = () => {
+    const title = `Loan Details - ${sanitize(loan.customerName)}`;
+    const totalAmountStr = `₹${totalAmount.toLocaleString('en-IN')}`;
+    const amountPaidStr = `₹${amountPaid.toLocaleString('en-IN')}`;
+    const balanceStr = `₹${balance.toLocaleString('en-IN')}`;
+
+    const rows = loan.transactions.map(txn => `\n      <tr>\n        <td style="padding:8px;border-bottom:1px solid #e5e7eb">${new Date(txn.payment_date).toLocaleDateString()}</td>\n        <td style="padding:8px;border-bottom:1px solid #e5e7eb">₹${txn.amount.toLocaleString('en-IN')}</td>\n        <td style="padding:8px;border-bottom:1px solid #e5e7eb">${txn.payment_type ? (txn.payment_type === 'interest' ? 'Interest' : 'Principal') : '—'}</td>\n      </tr>\n    `).join('');
+
+    const html = `<!doctype html>\n    <html>\n      <head>\n        <meta charset="utf-8" />\n        <title>${title}</title>\n        <style>\n          body{font-family: Arial, Helvetica, sans-serif; padding:20px; color:#111}\n          .header{display:flex;justify-content:space-between;align-items:center}\n          .summary{margin-top:16px;display:flex;gap:24px}\n          .stat{padding:8px}\n          table{width:100%;border-collapse:collapse;margin-top:16px}\n          th{background:#f3f4f6;padding:8px;text-align:left}\n        </style>\n      </head>\n      <body>\n        <div class="header">\n          <h1>${title}</h1>\n          <div>${new Date().toLocaleString()}</div>\n        </div>\n        <div class="summary">\n          <div class="stat"><strong>Total Amount</strong><div>${totalAmountStr}</div></div>\n          <div class="stat"><strong>Amount Paid</strong><div style="color:green">${amountPaidStr}</div></div>\n          <div class="stat"><strong>Balance Due</strong><div style="color:#dc2626">${balanceStr}</div></div>\n        </div>\n\n        <h3 style="margin-top:20px">Transaction History</h3>\n        <table>\n          <thead>\n            <tr>\n              <th>Date</th>\n              <th>Amount</th>\n              <th>Type</th>\n            </tr>\n          </thead>\n          <tbody>\n            ${rows}\n          </tbody>\n        </table>\n      </body>\n    </html>`;
+
+    const win = window.open('', '_blank', 'noopener,noreferrer');
+    if (!win) {
+      alert('Unable to open print window. Please allow popups.');
+      return;
+    }
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+    // Give browser a moment to render then trigger print
+    setTimeout(() => { try { win.print(); } catch (e) { console.error(e); } }, 500);
+  };
+
   return (
     <>
       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 animate-fade-in-fast">
@@ -68,6 +90,9 @@ const PaymentModal: React.FC<PaymentModalProps> = ({ loanId, onClose }) => {
           <div className="p-4 border-b flex justify-between items-center">
             <h2 className="text-xl font-semibold text-primary">{t('Loan Details')} - {sanitize(loan.customerName)}</h2>
             <div className="flex items-center gap-2">
+              <button onClick={(e) => { e.stopPropagation(); handleExportPDF(); }} className="p-2 rounded hover:bg-muted" title="Export PDF">
+                <Printer size={18} />
+              </button>
               <button onClick={(e) => { e.stopPropagation(); onClose(); }} className="p-2 rounded-full hover:bg-muted">
                 <X size={20} />
               </button>

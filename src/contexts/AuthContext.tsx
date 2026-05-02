@@ -1,4 +1,4 @@
-import React, { createContext, useState, useContext, useEffect, ReactNode, useCallback } from 'react';
+import React, { createContext, useState, useContext, useEffect, ReactNode, useCallback, useRef } from 'react';
 import { Admin } from '../types';
 import apiService from '../utils/apiService';
 
@@ -16,6 +16,9 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [admin, setAdmin] = useState<Admin | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+
+  const INACTIVITY_TIMEOUT_MS = 2 * 60 * 60 * 1000; // 2 hours
+  const timeoutRef = useRef<number | null>(null);
 
   useEffect(() => {
     const token = localStorage.getItem('authToken');
@@ -36,6 +39,38 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setIsLoading(false);
     }
   }, []);
+
+  useEffect(() => {
+    const events = ['mousemove', 'keydown', 'mousedown', 'touchstart', 'scroll'];
+    const resetTimer = () => {
+      try { localStorage.setItem('lastActivity', String(Date.now())); } catch (e) {}
+      if (timeoutRef.current) {
+        window.clearTimeout(timeoutRef.current);
+      }
+      // @ts-ignore
+      timeoutRef.current = window.setTimeout(() => {
+        // auto sign out on inactivity
+        signOut().catch(() => {});
+        try { alert('You have been logged out due to 2 hours of inactivity.'); } catch (e) {}
+      }, INACTIVITY_TIMEOUT_MS);
+    };
+
+    // On mount check lastActivity
+    const last = parseInt(localStorage.getItem('lastActivity') || '0', 10);
+    if (last && Date.now() - last > INACTIVITY_TIMEOUT_MS) {
+      // expired due to inactivity
+      signOut().catch(() => {});
+      return;
+    }
+
+    resetTimer();
+    const handler = () => resetTimer();
+    events.forEach(ev => window.addEventListener(ev, handler));
+    return () => {
+      events.forEach(ev => window.removeEventListener(ev, handler));
+      if (timeoutRef.current) window.clearTimeout(timeoutRef.current);
+    };
+  }, [signOut]);
 
   const signIn = useCallback(async (email: string, password?: string, forceLogin?: boolean) => {
     try {
