@@ -38,7 +38,7 @@ router.post('/login', [
     const sanitizedEmail = sanitizeInput(email).toLowerCase();
 
     const userResult = await pool.query(
-      'SELECT id, email, password_hash, display_name, active_token_hash, device_id, last_login_at FROM users WHERE email = $1',
+      'SELECT id, email, password_hash, display_name, active_token_hash, device_id, last_login_at, last_activity_at FROM users WHERE email = $1',
       [sanitizedEmail]
     );
 
@@ -83,7 +83,7 @@ router.post('/login', [
     // Store hashed token and device info
     const tokenHash = hashToken(token);
     await pool.query(
-      'UPDATE users SET active_token_hash = $1, device_id = $2, last_login_at = now() WHERE id = $3',
+      'UPDATE users SET active_token_hash = $1, device_id = $2, last_login_at = now(), last_activity_at = now() WHERE id = $3',
       [tokenHash, currentDeviceId, user.id]
     );
 
@@ -108,7 +108,7 @@ router.post('/login', [
 router.post('/logout', authenticate, async (req, res) => {
   try {
     await pool.query(
-      'UPDATE users SET active_token_hash = NULL, device_id = NULL WHERE id = $1',
+      'UPDATE users SET active_token_hash = NULL, device_id = NULL, last_activity_at = NULL WHERE id = $1',
       [req.user.id]
     );
     res.json({ message: 'Logged out successfully' });
@@ -245,7 +245,7 @@ router.post('/reset-password', async (req, res) => {
 
     // Update password and invalidate all sessions
     const passwordHash = await bcrypt.hash(newPassword, 12);
-    await client.query('UPDATE users SET password_hash = $1, active_token_hash = NULL, device_id = NULL WHERE id = $2', [passwordHash, resetRecord.user_id]);
+    await client.query('UPDATE users SET password_hash = $1, active_token_hash = NULL, device_id = NULL, last_activity_at = NULL WHERE id = $2', [passwordHash, resetRecord.user_id]);
 
     await client.query('COMMIT');
 

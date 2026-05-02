@@ -2,6 +2,8 @@ const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const { pool } = require('../config/database');
 
+const INACTIVITY_TIMEOUT_MS = 2 * 60 * 60 * 1000;
+
 const hashToken = (token) => {
   return crypto.createHash('sha256').update(token).digest('hex');
 };
@@ -18,7 +20,7 @@ const authenticate = async (req, res, next) => {
     const tokenHash = hashToken(token);
 
     const result = await pool.query(
-      'SELECT active_token_hash, role FROM users WHERE id = $1',
+      'SELECT active_token_hash, role, last_activity_at FROM users WHERE id = $1',
       [decoded.id]
     );
 
@@ -33,6 +35,23 @@ const authenticate = async (req, res, next) => {
         code: 'SESSION_REPLACED'
       });
     }
+
+    const lastActivityAt = result.rows[0].last_activity_at ? new Date(result.rows[0].last_activity_at) : null;
+    if (lastActivityAt && Date.now() - lastActivityAt.getTime() > INACTIVITY_TIMEOUT_MS) {
+      await pool.query(
+        'UPDATE users SET active_token_hash = NULL, device_id = NULL, last_activity_at = NULL WHERE id = $1',
+        [decoded.id]
+      );
+      return res.status(401).json({
+        error: 'Session expired due to inactivity. Please login again.',
+        code: 'SESSION_INACTIVE'
+      });
+    }
+
+    await pool.query(
+      'UPDATE users SET last_activity_at = now() WHERE id = $1',
+      [decoded.id]
+    );
 
     req.user = { id: decoded.id, email: decoded.email, role: result.rows[0].role };
     next();

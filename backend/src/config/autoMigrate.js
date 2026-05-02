@@ -21,6 +21,7 @@ async function autoMigrate() {
         role TEXT NOT NULL DEFAULT 'admin',
         active_token_hash TEXT,
         device_id TEXT,
+        last_activity_at TIMESTAMPTZ,
         last_login_at TIMESTAMPTZ,
         is_locked BOOLEAN NOT NULL DEFAULT false,
         locked_until TIMESTAMPTZ,
@@ -31,6 +32,7 @@ async function autoMigrate() {
       ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'admin';
       ALTER TABLE users ADD COLUMN IF NOT EXISTS active_token_hash TEXT;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS device_id TEXT;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS last_activity_at TIMESTAMPTZ;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS is_locked BOOLEAN NOT NULL DEFAULT false;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS locked_until TIMESTAMPTZ;
