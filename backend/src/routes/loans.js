@@ -1,5 +1,6 @@
 const express = require('express');
 const fs = require('fs');
+const PDFDocument = require('pdfkit');
 const { pool } = require('../config/database');
 const { authenticate } = require('../middleware/auth');
 const { sendEmail } = require('../config/email');
@@ -47,6 +48,144 @@ const launchPdfBrowser = async () => {
 
   return puppeteer.launch(launchOptions);
 };
+
+const formatAmount = (value) => `Rs. ${Number(value || 0).toLocaleString('en-IN')}`;
+
+const buildFallbackReceiptPdf = ({
+  customerName,
+  loanId,
+  issueDate,
+  phone,
+  totalAmount,
+  amountPaid,
+  balance,
+  loanType,
+  startDate,
+  status,
+  transactions = [],
+  generatedAt,
+}) => new Promise((resolve, reject) => {
+  const chunks = [];
+  const doc = new PDFDocument({ size: 'A4', margin: 36, bufferPages: true });
+
+  doc.on('data', (chunk) => chunks.push(chunk));
+  doc.on('error', reject);
+  doc.on('end', () => resolve(Buffer.concat(chunks)));
+
+  const pageWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
+  const accent = '#1a2e4a';
+  const gold = '#c99a2e';
+
+  const drawHeader = () => {
+    doc.rect(0, 0, doc.page.width, 72).fill(accent);
+    doc.fillColor('#ffffff').fontSize(20).font('Helvetica-Bold').text('Sri Vinayaka Tenders', 40, 24);
+    doc.fontSize(9).font('Helvetica').text('Official Loan Receipt', 40, 48);
+    doc.roundedRect(doc.page.width - 150, 20, 110, 30, 4).strokeColor('#ffffff').lineWidth(1.2).stroke();
+    doc.fontSize(8).font('Helvetica-Bold').text('LOAN RECEIPT', doc.page.width - 130, 31, { align: 'center', width: 70 });
+    doc.y = 92;
+  };
+
+  const drawKeyValue = (x, y, width, label, value) => {
+    doc.fillColor('#718096').fontSize(7).font('Helvetica-Bold').text(label.toUpperCase(), x, y, { width });
+    doc.fillColor('#1a202c').fontSize(10).font('Helvetica-Bold').text(value || '—', x, y + 11, { width });
+  };
+
+  const drawSummaryCard = (x, y, width, title, value, fillColor) => {
+    doc.roundedRect(x, y, width, 54, 8).fillAndStroke(fillColor, '#e2e8f0');
+    doc.fillColor('#718096').fontSize(7).font('Helvetica-Bold').text(title.toUpperCase(), x + 10, y + 10, { width: width - 20, align: 'center' });
+    doc.fillColor('#1a202c').fontSize(15).font('Helvetica-Bold').text(value, x + 10, y + 23, { width: width - 20, align: 'center' });
+  };
+
+  drawHeader();
+
+  doc.moveTo(36, 80).lineTo(doc.page.width - 36, 80).lineWidth(3).stroke(gold);
+
+  const colGap = 12;
+  const halfWidth = (pageWidth - colGap) / 2;
+  const cardWidth = (pageWidth - 24) / 3;
+
+  drawKeyValue(40, 100, halfWidth, 'Loan ID', loanId);
+  drawKeyValue(40 + halfWidth + colGap, 100, halfWidth, 'Issue Date', issueDate || startDate);
+  drawKeyValue(40, 140, halfWidth, 'Customer Name', customerName);
+  drawKeyValue(40 + halfWidth + colGap, 140, halfWidth, 'Phone', phone || '—');
+
+  drawSummaryCard(40, 184, cardWidth, 'Total Amount', formatAmount(totalAmount), '#ebf4ff');
+  drawSummaryCard(40 + cardWidth + 8, 184, cardWidth, 'Amount Paid', formatAmount(amountPaid), '#f0fff4');
+  drawSummaryCard(40 + (cardWidth + 8) * 2, 184, cardWidth, 'Balance Due', formatAmount(balance), '#fff5f5');
+
+  drawKeyValue(40, 256, halfWidth, 'Loan Type', loanType || '—');
+  drawKeyValue(40 + halfWidth + colGap, 256, halfWidth, 'Status', status || '—');
+  drawKeyValue(40, 296, halfWidth, 'Start Date', startDate || '—');
+  drawKeyValue(40 + halfWidth + colGap, 296, halfWidth, 'Generated', new Date(generatedAt || Date.now()).toLocaleDateString('en-IN'));
+
+  doc.moveTo(40, 336).lineTo(doc.page.width - 40, 336).lineWidth(2).stroke(gold);
+  doc.fillColor(accent).font('Helvetica-Bold').fontSize(14).text('Transaction History', 40, 346);
+
+  const tableTop = 376;
+  const rowHeight = 22;
+  const columns = [
+    { title: '#', width: 32 },
+    { title: 'Date', width: 110 },
+    { title: 'Type', width: 110 },
+    { title: 'Amount', width: pageWidth - 32 - 110 - 110 - 32 },
+  ];
+
+  let cursorX = 40;
+  doc.rect(40, tableTop, pageWidth, rowHeight).fill(accent);
+  doc.fillColor('#ffffff').fontSize(8).font('Helvetica-Bold');
+  for (const column of columns) {
+    doc.text(column.title, cursorX + 6, tableTop + 7, { width: column.width - 12, align: column.title === 'Amount' ? 'right' : 'left' });
+    cursorX += column.width;
+  }
+
+  let y = tableTop + rowHeight;
+  if (transactions.length === 0) {
+    doc.rect(40, y, pageWidth, 28).fill('#f7fafc').stroke('#e2e8f0');
+    doc.fillColor('#718096').font('Helvetica').fontSize(9).text('No transactions available', 40, y + 9, { width: pageWidth, align: 'center' });
+    y += 28;
+  } else {
+    transactions.forEach((transaction, index) => {
+      const rowFill = index % 2 === 0 ? '#ffffff' : '#f7fafc';
+      doc.rect(40, y, pageWidth, rowHeight).fill(rowFill).stroke('#e2e8f0');
+      cursorX = 40;
+      doc.fillColor('#2d3748').font('Helvetica').fontSize(8);
+      const values = [
+        String(index + 1),
+        transaction.payment_date ? new Date(transaction.payment_date).toLocaleDateString('en-IN') : '—',
+        transaction.payment_type === 'interest' ? 'Interest' : 'Principal',
+        formatAmount(transaction.amount),
+      ];
+      columns.forEach((column, colIndex) => {
+        doc.text(values[colIndex], cursorX + 6, y + 7, {
+          width: column.width - 12,
+          align: colIndex === 3 ? 'right' : 'left',
+        });
+        cursorX += column.width;
+      });
+      y += rowHeight;
+      if (y > doc.page.height - 110) {
+        doc.addPage({ size: 'A4', margin: 36 });
+        y = 40;
+      }
+    });
+  }
+
+  doc.fillColor(accent).font('Helvetica-Bold').fontSize(10).text(
+    `${transactions.length} Payment(s)   |   Total Paid: ${formatAmount(amountPaid)}`,
+    40,
+    Math.min(y + 10, doc.page.height - 70),
+    { width: pageWidth }
+  );
+
+  doc.fillColor('#a0aec0').font('Helvetica').fontSize(7.5).text(
+    `Generated by Sri Vinayaka Tenders on ${new Date(generatedAt || Date.now()).toLocaleString('en-IN')}`,
+    40,
+    doc.page.height - 48,
+    { width: pageWidth, align: 'left' }
+  );
+
+  doc.end();
+});
 
 // ─── Helper: Map DB row to frontend Loan shape ─────
 const mapLoan = (row, transactions = []) => ({
@@ -361,23 +500,42 @@ router.get('/:loanId/receipt-pdf', [ param('loanId').isUUID() ], async (req, res
       generatedAt: Date.now(),
     });
 
-    // Launch puppeteer and render PDF
-    const browser = await launchPdfBrowser();
-    try {
-      const page = await browser.newPage();
-      await page.setContent(html, { waitUntil: 'load' });
-      const pdfBuffer = await page.pdf({ format: 'A4', printBackground: true, margin: { top: 0, right: 0, bottom: 0, left: 0 } });
+    const filename = `Loan-Receipt-${customerName.replace(/[^a-z0-9_-]/gi, '_')}.pdf`;
+    let pdfBuffer = null;
 
-      const filename = `Loan-Receipt-${customerName.replace(/[^a-z0-9_-]/gi, '_')}.pdf`;
-      res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-      res.send(pdfBuffer);
-      return;
-    } finally {
-      await browser.close().catch((closeErr) => {
-        console.error('PDF browser close error:', closeErr);
+    try {
+      const browser = await launchPdfBrowser();
+      try {
+        const page = await browser.newPage();
+        await page.setContent(html, { waitUntil: 'load' });
+        pdfBuffer = await page.pdf({ format: 'A4', printBackground: true, margin: { top: 0, right: 0, bottom: 0, left: 0 } });
+      } finally {
+        await browser.close().catch((closeErr) => {
+          console.error('PDF browser close error:', closeErr);
+        });
+      }
+    } catch (pdfErr) {
+      console.error('Puppeteer receipt generation failed, using PDFKit fallback:', pdfErr);
+      pdfBuffer = await buildFallbackReceiptPdf({
+        customerName,
+        loanId: loanRow.id,
+        issueDate: loanRow.created_at || loanRow.start_date,
+        phone: loanRow.phone,
+        totalAmount,
+        amountPaid,
+        balance,
+        loanType: loanRow.loan_type,
+        startDate: loanRow.start_date,
+        status: loanRow.status,
+        transactions,
+        generatedAt: Date.now(),
       });
     }
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(pdfBuffer);
+    return;
   } catch (err) {
     console.error('Generate PDF error:', err);
     res.status(500).json({ error: 'Failed to generate PDF' });
