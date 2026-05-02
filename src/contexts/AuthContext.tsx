@@ -20,6 +20,18 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const INACTIVITY_TIMEOUT_MS = 2 * 60 * 60 * 1000; // 2 hours
   const timeoutRef = useRef<number | null>(null);
 
+  const signOut = useCallback(async () => {
+    try {
+      await apiService.logout();
+    } catch (err) {
+      // Logout endpoint may return 401 if the session was already replaced.
+      // Ensure client clears local session state regardless so UI reflects logged-out status.
+      console.warn('Logout request failed or session already expired; clearing local session state.');
+    }
+    localStorage.removeItem('authToken');
+    setAdmin(null);
+  }, []);
+
   useEffect(() => {
     const token = localStorage.getItem('authToken');
     if (token) {
@@ -95,18 +107,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     } catch (error: any) {
       return { error: error.message || 'An unknown error occurred' };
     }
-  }, []);
-
-  const signOut = useCallback(async () => {
-    try {
-      await apiService.logout();
-    } catch (err) {
-      // Logout endpoint may return 401 if the session was already replaced.
-      // Ensure client clears local session state regardless so UI reflects logged-out status.
-      console.warn('Logout request failed or session already expired; clearing local session state.');
-    }
-    localStorage.removeItem('authToken');
-    setAdmin(null);
   }, []);
 
   return (
