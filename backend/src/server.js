@@ -10,6 +10,7 @@ const PORT = process.env.PORT || 5000;
 const app = createApp({ isServerless: false });
 
 const requiresDatabaseUrl = process.env.NODE_ENV === 'production' || process.env.VERCEL === '1';
+const shouldAutoMigrate = process.env.VERCEL !== '1' && process.env.AUTO_MIGRATE_ON_BOOT !== 'false';
 if (!process.env.JWT_SECRET) {
   throw new Error('FATAL: JWT_SECRET is not defined.');
 }
@@ -20,8 +21,9 @@ if (requiresDatabaseUrl && !process.env.DATABASE_URL) {
 const startServer = async () => {
   await testConnection();
 
-  // Auto-migration is intentionally opt-in to avoid cold-start lockups in serverless deployments.
-  if (process.env.AUTO_MIGRATE_ON_BOOT === 'true') {
+  // Run the idempotent startup migration on EC2/default Node deployments.
+  // Serverless deployments can opt out explicitly via AUTO_MIGRATE_ON_BOOT=false.
+  if (shouldAutoMigrate) {
     await autoMigrate();
   }
 
